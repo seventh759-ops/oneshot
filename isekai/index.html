@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>一撃転生</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<header>
+  <h1>一撃転生</h1>
+  <nav id="stage-nav" aria-label="敵"></nav>
+  <div class="header-tools">
+    <span id="death-count"></span>
+    <button id="mute-btn" class="ghost small" type="button"></button>
+  </div>
+</header>
+
+<main>
+  <section class="win" id="enemy-win">
+    <div class="win-title" id="enemy-label"></div>
+    <div class="enemy-body">
+      <canvas id="enemy-canvas" width="256" height="256" aria-hidden="true"></canvas>
+      <canvas id="fx-canvas" width="256" height="256" aria-hidden="true"></canvas>
+      <div id="strike-line"></div>
+    </div>
+    <p id="enemy-intro"></p>
+  </section>
+
+  <section class="win" id="notes-win">
+    <div class="win-title">死に帳 <span class="sub">死んで覚えたこと</span></div>
+    <ul id="notes"></ul>
+  </section>
+
+  <section class="win" id="build-win">
+    <div class="win-title">一撃に込める能力 <span class="sub">枠に触れると外す</span></div>
+    <div id="slots"></div>
+    <div id="abilities"></div>
+    <div class="actions">
+      <button id="reset-btn" class="ghost" type="button">外す</button>
+      <button id="attack-btn" type="button">一撃必殺</button>
+    </div>
+  </section>
+</main>
+
+<div id="flash" hidden></div>
+
+<div id="death" class="overlay" hidden>
+  <div class="death-box">
+    <div id="death-kind"></div>
+    <p id="death-text"></p>
+    <div id="death-title" hidden>死亡</div>
+    <div id="death-after" hidden>
+      <p id="death-clue"></p>
+      <p id="goddess"></p>
+      <button id="revive-btn" type="button">戦いの前に戻る</button>
+    </div>
+  </div>
+</div>
+
+<div id="victory" class="overlay" hidden>
+  <div class="win victory-box">
+    <div id="victory-title"></div>
+    <p id="victory-text"></p>
+    <div id="victory-reward"></div>
+    <button id="next-btn" type="button"></button>
+  </div>
+</div>
+
+<div id="prologue" class="overlay" hidden>
+  <div class="win prologue-box">
+    <div class="win-title">女神</div>
+    <div id="prologue-text"></div>
+    <button id="prologue-btn" type="button">転生する</button>
+  </div>
+</div>
+
+<script src="src/logic.js"></script>
+<script src="src/sprites.js"></script>
+<script src="src/sound.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

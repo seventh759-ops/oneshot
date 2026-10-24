@@ -1,0 +1,141 @@
+/* レイアウト：中央一列のステータスウィンドウ（敵 → 死に帳 → 能力）。紺の地に白縁の窓、金を一点 */
+:root {
+  color-scheme: dark;
+  --bg: #0b0e1e;
+  --win: #131a38;
+  --win-2: #1b2550;
+  --line: #e6ebff;
+  --line-dim: #4a5790;
+  --text: #eef1ff;
+  --muted: #9aa4cc;
+  --gold: #ffd34d;
+  --blood: #ff3b5c;
+  --pixel: "DotGothic16", "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
+  --body: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--pixel); }
+button { font: inherit; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1 { margin: 0; font-size: 22px; font-weight: 400; letter-spacing: .15em; }
+#stage-nav { display: flex; gap: 4px; }
+#stage-nav button {
+  width: 30px; height: 30px; border: 2px solid var(--line-dim); border-radius: 4px;
+  background: var(--win); color: var(--muted); cursor: pointer;
+}
+#stage-nav button.cleared { color: var(--text); border-color: var(--line); }
+#stage-nav button.perfect { color: var(--gold); border-color: var(--gold); }
+#stage-nav button.current { background: var(--line); color: var(--bg); border-color: var(--line); }
+#stage-nav button:disabled { opacity: .3; cursor: default; }
+.header-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+#death-count { font-size: 13px; color: var(--blood); }
+@media (max-width: 480px) { #stage-nav { order: 3; width: 100%; } }
+
+main {
+  max-width: 640px; margin: 0 auto; display: grid; gap: 14px;
+  padding-block: 4px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ステータスウィンドウ：白い二重縁 */
+.win {
+  background: var(--win); border: 2px solid var(--line); border-radius: 6px; padding: 14px 16px;
+  box-shadow: inset 0 0 0 2px var(--win), inset 0 0 0 3px var(--line-dim);
+}
+.win-title { font-size: 15px; letter-spacing: .1em; margin-bottom: 10px; }
+.win-title .sub { color: var(--muted); font-size: 12px; margin-left: 6px; letter-spacing: 0; }
+
+#enemy-win { text-align: center; }
+#enemy-label { font-size: 20px; }
+.enemy-body { position: relative; width: 192px; max-width: 100%; aspect-ratio: 1; margin: 0 auto; }
+.enemy-body canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+#enemy-canvas { animation: bob 1.6s steps(2) infinite; }
+#enemy-canvas.gone { visibility: hidden; animation: none; }
+#enemy-canvas.hurt { animation: hurt .4s steps(4); }
+@keyframes bob { 50% { transform: translateY(-4px); } }
+@keyframes hurt { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+#strike-line {
+  position: absolute; left: -30%; right: -30%; top: 50%; height: 4px; background: var(--line);
+  box-shadow: 0 0 12px var(--line); transform: rotate(-20deg) scaleX(0); pointer-events: none;
+}
+#strike-line.on { animation: strike .3s steps(6) forwards; }
+@keyframes strike { 0% { transform: rotate(-20deg) scaleX(0); opacity: 1; } 60% { transform: rotate(-20deg) scaleX(1); opacity: 1; } 100% { transform: rotate(-20deg) scaleX(1); opacity: 0; } }
+#enemy-intro { margin: 8px 0 0; font-family: var(--body); font-size: 14px; color: var(--muted); }
+
+#notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--body); font-size: 14px; }
+#notes li { padding-left: 1.2em; position: relative; line-height: 1.6; }
+#notes li::before { content: "▶"; position: absolute; left: 0; color: var(--blood); font-size: 10px; top: .35em; }
+#notes li.empty { color: var(--muted); padding-left: 0; }
+#notes li.empty::before { content: none; }
+
+#slots { display: flex; gap: 8px; }
+.slot {
+  flex: 1 1 0; min-width: 0; min-height: 64px; border: 2px dashed var(--line-dim); border-radius: 4px;
+  display: grid; place-items: center; text-align: center; padding: 6px; font-size: 14px; color: var(--muted); cursor: pointer;
+}
+.slot.filled { border-style: solid; border-color: var(--line); color: var(--text); background: var(--win-2); }
+.slot.glow { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 12px #ffd34d66; }
+
+#abilities { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
+.ability {
+  text-align: left; padding: 8px 10px; border-radius: 4px; border: 2px solid var(--line-dim);
+  background: var(--win-2); color: var(--text); cursor: pointer; display: grid; gap: 2px;
+}
+.ability:hover:not(:disabled) { border-color: var(--line); }
+.ability:disabled { opacity: .35; cursor: default; }
+.ability .name::before { content: "《"; color: var(--muted); }
+.ability .name::after { content: "》"; color: var(--muted); }
+.ability.stolen { border-color: #8a7a3a; }
+.ability .tag { color: var(--gold); font-size: 11px; margin-left: 4px; }
+.ability .desc { font-family: var(--body); font-size: 12px; color: var(--muted); }
+
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+#attack-btn, #revive-btn, #next-btn, #prologue-btn {
+  background: var(--line); color: var(--bg); border: 0; border-radius: 4px; padding: 10px 22px; font-size: 17px; letter-spacing: .1em; cursor: pointer;
+}
+#attack-btn:disabled { opacity: .35; cursor: default; }
+.ghost { background: transparent; color: var(--muted); border: 2px solid var(--line-dim); border-radius: 4px; padding: 8px 14px; cursor: pointer; }
+.ghost.small { padding: 4px 10px; font-size: 12px; }
+.ghost:disabled { opacity: .4; cursor: default; }
+
+/* 演出 */
+#flash { position: fixed; inset: 0; z-index: 30; background: #fff; pointer-events: none; animation: flash .35s forwards; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+.overlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
+
+#death { background: #1a0008ee; }
+.death-box { max-width: 460px; width: 100%; text-align: center; }
+#death-kind { font-size: 15px; color: var(--muted); letter-spacing: .2em; }
+#death-text { font-family: var(--body); font-size: 16px; line-height: 1.9; text-align: left; min-height: 6em; margin: 14px 0; }
+#death-title { font-size: 64px; color: var(--blood); letter-spacing: .3em; text-shadow: 3px 3px 0 #000; animation: died .5s steps(5); }
+@keyframes died { from { transform: scale(2); opacity: 0; } }
+#death-after { display: grid; gap: 10px; justify-items: center; margin-top: 8px; }
+#death-clue { margin: 0; font-family: var(--body); font-size: 14px; color: var(--gold); }
+#goddess { margin: 0; font-family: var(--body); font-size: 14px; color: var(--text); }
+#goddess::before { content: "女神「"; color: var(--muted); }
+#goddess::after { content: "」"; color: var(--muted); }
+
+#victory { background: #0b0e1ecc; }
+.victory-box { max-width: 400px; width: 100%; text-align: center; display: grid; gap: 12px; justify-items: center; }
+#victory-title { font-size: 40px; letter-spacing: .15em; animation: died .4s steps(4); }
+#victory-title.perfect { color: var(--gold); font-size: 72px; text-shadow: 0 0 18px #ffd34d88; }
+#victory-text { margin: 0; font-family: var(--body); font-size: 14px; line-height: 1.8; }
+#victory-reward { font-size: 15px; }
+#victory-reward .got { color: var(--gold); }
+#victory-reward small { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.reveal { font-family: var(--body); font-size: 13px; color: var(--gold); margin: 0; }
+
+#prologue { background: #000000dd; }
+.prologue-box { max-width: 460px; width: 100%; display: grid; gap: 14px; }
+#prologue-text { font-family: var(--body); font-size: 15px; line-height: 1.9; }
+#prologue-text p { margin: 0 0 8px; }
+#prologue-btn { justify-self: end; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+}

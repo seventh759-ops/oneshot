@@ -25,3 +25,7 @@
 - `tools/solve.js` … 全ビルドを剣士ごとに総当たりし、勝ち・極・試練の達成手段の数を出す（`node tools/solve.js [幕] [--list]`）
 - `tools/tune.js` … 体力の候補ごとに剣士別の勝ち／極の数を出す（`node tools/tune.js <幕> [装甲] [秘伝あり=1]`）
 - `tools/bundle.py` … 1ファイルにまとめる（`python3 tools/bundle.py out.html`）
+
+## 別作品
+
+- `isekai/` … 一撃転生（数値を使わず、能力の組み合わせで勝つ版）
