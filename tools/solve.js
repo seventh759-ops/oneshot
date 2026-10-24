@@ -23,5 +23,5 @@ for (const st of STAGES) {
     if (r.win) wins.push(b.join(','));
   }
   console.log(`Stage ${st.id} ${st.enemy}: HP${st.hp} 最大${best} 解 ${wins.length}/${total}`);
-  wins.slice(0, 6).forEach((w) => console.log('   ', w));
+  wins.slice(0, 10).forEach((w) => console.log('   ', w));
 }

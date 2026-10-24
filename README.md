@@ -11,8 +11,9 @@
 ## 構成
 
 - `src/logic.js` … パーツ・ステージ定義と計算処理（DOM非依存）
-- `src/main.js` … 画面と演出（構え→カットイン→暗転→一閃→結果）
+- `src/main.js` … 画面と演出（成功時のみ カットイン→暗転→一閃）
 - `src/sound.js` … 効果音（Web Audio で合成）
+- `src/monster.js` … 墨で描く異形（Canvas で生成）
 - `src/style.css` … 見た目
 - `tools/solve.js` … 全ビルドを総当たりして各ステージの解の数を出す（`node tools/solve.js`）
 - `tools/bundle.py` … 1ファイルにまとめる（`python3 tools/bundle.py out.html`）

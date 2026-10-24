@@ -75,12 +75,19 @@
   }
 
   function resetEnemyView() {
-    $('enemy-sprite').className = '';
+    // 斬られた状態から戻すときはアニメーションさせない
+    const sprite = $('enemy-sprite');
+    sprite.className = 'instant';
+    void sprite.offsetWidth;
+    sprite.className = '';
     $('enemy-cut').className = '';
     $('stamp').className = '';
     $('damage-pop').className = '';
     $('enso').style.opacity = '';
   }
+
+  const monsterCache = {};
+  const monsterImage = (st) => (monsterCache[st.id] ||= window.drawMonster(st.look));
 
   const seal = (key) => `<span class="seal">${PARTS[key].icon}</span>`;
 
@@ -101,7 +108,8 @@
     });
 
     $('enemy-name').innerHTML = `第${kanjiNum(st.id)}幕<b>${st.enemy}</b>`;
-    document.querySelectorAll('.half').forEach((h) => { h.textContent = st.sprite; });
+    const img = monsterImage(st);
+    document.querySelectorAll('.half').forEach((h) => { h.style.backgroundImage = `url(${img})`; });
     const tags = [`<span class="tag hp">体力 ${st.hp}</span>`];
     if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
     if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
@@ -185,29 +193,30 @@
     }
     await wait(200);
 
-    // 二. カットイン
-    const cutin = $('cutin');
-    cutin.querySelector('.cutin-sub').textContent = `${st.enemy}、斬る`;
-    cutin.hidden = false;
-    cutin.classList.remove('on');
-    void cutin.offsetWidth;
-    cutin.classList.add('on');
-    Sound.play('cutin');
-    await wait(820);
-
-    // 三. 暗転 → 一閃
+    // 成功したときだけ、カットイン → 暗転 → 一閃
     const bo = $('blackout');
-    bo.className = '';
-    bo.hidden = false;
-    cutin.hidden = true;
-    await wait(450);
-    bo.classList.add('slash');
-    Sound.play('slash');
-    await wait(420);
+    if (r.win) {
+      const cutin = $('cutin');
+      cutin.querySelector('.cutin-sub').textContent = `${st.enemy}、斬る`;
+      cutin.hidden = false;
+      cutin.classList.remove('on');
+      void cutin.offsetWidth;
+      cutin.classList.add('on');
+      Sound.play('cutin');
+      await wait(820);
 
-    // 四. 結果：明けると決着がついている
+      bo.className = '';
+      bo.hidden = false;
+      cutin.hidden = true;
+      await wait(450);
+      bo.classList.add('slash');
+      Sound.play('slash');
+      await wait(420);
+    }
+
+    // 結果
     const sprite = $('enemy-sprite');
-    if (r.win) { sprite.classList.add('split'); $('enemy-cut').classList.add('on'); $('enso').style.opacity = '.3'; }
+    if (r.win) { sprite.classList.add('split'); $('enemy-cut').classList.add('on'); $('enso').style.opacity = '.15'; }
     else sprite.classList.add(r.reflected ? 'reflect' : 'shake');
     const pop = $('damage-pop');
     pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.final}</small>`;
@@ -218,12 +227,14 @@
     stamp.textContent = r.win ? '撃破' : r.reflected ? '反射' : '浅し';
     stamp.classList.add('on');
     Sound.play(r.win ? 'win' : r.reflected ? 'reflect' : 'fail');
-    bo.classList.add('fade');
     $('log').innerHTML = breakdown(st, r);
-    await wait(260);
-    bo.hidden = true;
+    if (r.win) {
+      bo.classList.add('fade');
+      await wait(260);
+      bo.hidden = true;
+    }
 
-    await wait(1500);
+    await wait(r.win ? 1500 : 1100);
 
     if (r.win) {
       if (!cleared.includes(st.id)) { cleared.push(st.id); saveProgress(); }
