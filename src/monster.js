@@ -152,6 +152,36 @@
       [[0.33, 0.42], [0.43, 0.39], [0.57, 0.39], [0.67, 0.42]].slice(0, L.eyes)
         .forEach(([x, y]) => eye(c, W * x, W * y, W * 0.035, 0));
     },
+    // 鵺：猿の顔、狸の胴、虎の手足、蛇の尾
+    nue(c, r, W, L) {
+      // 蛇の尾
+      stroke(c, r, [[W * 0.7, W * 0.55], [W * 0.88, W * 0.42], [W * 0.84, W * 0.22], [W * 0.7, W * 0.16]], 12);
+      blob(c, r, W * 0.68, W * 0.15, W * 0.05, W * 0.035, 0.1, 20);
+      c.save(); c.fillStyle = SHU;
+      c.beginPath(); c.moveTo(W * 0.63, W * 0.15); c.lineTo(W * 0.57, W * 0.13); c.lineTo(W * 0.6, W * 0.16); c.closePath(); c.fill();
+      c.restore();
+      // 虎の手足
+      for (const [x0, x1] of [[0.32, 0.22], [0.42, 0.38], [0.58, 0.62], [0.68, 0.78]]) {
+        stroke(c, r, [[W * x0, W * 0.6], [W * x1, W * 0.86]], 11);
+        teeth(c, r, W * (x1 - 0.04), W * (x1 + 0.04), W * 0.86, W * 0.035, 1, 3);
+      }
+      // 狸の胴（虎縞を抜く）
+      blob(c, r, W * 0.5, W * 0.56, W * 0.26, W * 0.16, 0.1);
+      c.save(); c.fillStyle = '#4d4235';
+      for (let i = 0; i < 5; i++) {
+        const x = W * (0.35 + i * 0.075);
+        c.beginPath(); c.moveTo(x, W * 0.45); c.lineTo(x + W * 0.025, W * 0.45); c.lineTo(x + W * 0.005, W * 0.6); c.closePath(); c.fill();
+      }
+      c.restore();
+      // 猿の顔
+      blob(c, r, W * 0.3, W * 0.38, W * 0.13, W * 0.12, 0.12);
+      c.save(); c.fillStyle = '#8a3a2c';
+      blob(c, r, W * 0.29, W * 0.41, W * 0.085, W * 0.075, 0.06, 24);
+      c.restore();
+      eye(c, W * 0.255, W * 0.38, W * 0.028, -0.4);
+      eye(c, W * 0.325, W * 0.38, W * 0.028, -0.4);
+      teeth(c, r, W * 0.25, W * 0.33, W * 0.445, W * 0.03, 1, 4);
+    },
   };
 
   // 異形を描いた画像（dataURL）を返す
