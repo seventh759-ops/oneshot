@@ -169,9 +169,8 @@
 
   function enemyTags(st) {
     const body = BODIES[st.body];
-    const tags = [`<span class="tag hp">体力 ${st.hp}</span>`];
-    if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
-    tags.push(`<span class="tag el">五行 ${elName(st.element)}</span>`);
+    // 体力や装甲の数値は見せない。見てわかる五行と体質だけ
+    const tags = [`<span class="tag el">五行 ${elName(st.element)}</span>`];
     tags.push(`<span class="tag">${body.name}：${body.desc}</span>`);
     if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
     return tags;
@@ -295,21 +294,12 @@
     $('reset-btn').disabled = busy;
   }
 
-  function breakdown(st, r) {
-    const parts = [`威力 <b>${r.raw}</b>`];
-    if (r.physMult !== 1) parts.push(`${PHYS[r.phys].name}${r.physMult > 1 ? '・急所' : '・半減'} <b>${r.afterPhys}</b>`);
-    if (r.relation === 'koku') parts.push(`相剋 ${elName(r.element)}→${elName(st.element)} 会心 <b>×3</b>`);
-    if (r.relation === 'same') parts.push(`同属 ${elName(r.element)} 半減 <b>${r.afterElem}</b>`);
-    if (r.relation === 'sho') parts.push(`相生 ${elName(r.element)}→${elName(st.element)} <b>吸収</b>`);
-    if (st.armor && r.afterElem > 0) parts.push(r.armorApplied === 0 ? '装甲 <b>無効</b>' : `装甲 <b>−${r.armorApplied}</b>`);
-    parts.push(`最終 <b>${r.final}</b>／体力 ${st.hp}`);
-    let verdict;
-    if (r.perfect) verdict = '<span class="win">極。寸分違わず斬り伏せた。</span>';
-    else if (r.win) verdict = '<span class="win">一刀両断。</span>';
-    else if (r.reflected) verdict = `<span class="lose">弾かれた。${r.final > st.hp ? '強すぎる' : '弱すぎる'}一太刀。</span>`;
-    else if (r.relation === 'sho') verdict = '<span class="lose">吸い込まれた。五行が敵を生んでいる。</span>';
-    else verdict = `<span class="lose">浅い。あと ${st.hp - r.final}。</span>`;
-    return parts.join(' → ') + '<br>' + verdict;
+  // 結果は数値で見せず、剣士の言葉と手応えで返す
+  function feedback(st, r) {
+    const { line, feel } = window.Voice.comment(charKey, st, r);
+    const cls = r.win ? 'v-win' : 'v-lose';
+    return `<div class="voice ${cls}"><b>${CHARS[charKey].name}</b>「${line}」</div>`
+      + (feel ? `<div class="feel">手応え：${feel}</div>` : '');
   }
 
   async function attack() {
@@ -352,18 +342,22 @@
       $('enso').style.opacity = '.15';
       if (r.perfect) inkBurst();
     } else sprite.classList.add(r.reflected ? 'reflect' : 'shake');
+    // 斬れたときだけ、一太刀の威力を見せる
     const pop = $('damage-pop');
-    pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.perfect ? '寸分違わず' : r.final}</small>`;
-    pop.className = r.perfect ? 'perfect' : r.critical ? 'crit' : '';
-    void pop.offsetWidth;
-    pop.classList.add('show');
+    pop.className = '';
+    if (r.win) {
+      pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.perfect ? '寸分違わず' : r.final}</small>`;
+      pop.className = r.perfect ? 'perfect' : r.critical ? 'crit' : '';
+      void pop.offsetWidth;
+      pop.classList.add('show');
+    }
     const stamp = $('stamp');
     stamp.textContent = r.perfect ? '極' : r.win ? '撃破' : r.reflected ? '反射' : r.relation === 'sho' ? '吸収' : '浅し';
     stamp.className = r.perfect ? 'gold' : '';
     void stamp.offsetWidth;
     stamp.classList.add('on');
     Sound.play(r.perfect ? 'perfect' : r.win ? 'win' : r.reflected ? 'reflect' : 'fail');
-    $('log').innerHTML = breakdown(st, r);
+    $('log').innerHTML = feedback(st, r);
     if (r.win) {
       document.body.classList.remove('timestop');
       bo.classList.add('fade');
@@ -380,7 +374,7 @@
       busy = false;
       resetEnemyView();
       render();
-      $('log').innerHTML = breakdown(st, r);
+      $('log').innerHTML = feedback(st, r);
     }
   }
 
@@ -486,7 +480,8 @@
     $('modal-title').textContent = r.perfect ? '極' : '一刀両断';
     $('modal').classList.toggle('perfect', r.perfect);
     let body = `<span class="rank">${rank}</span><br>${CHARS[charKey].name}が${kanjiNum(attempts + 1)}太刀で斬った`;
-    if (r.perfect) body += '<br><span class="gold-line">寸分違わぬ一太刀</span>';
+    body += `<p class="modal-voice">「${window.Voice.comment(charKey, st, r).line}」</p>`;
+    if (r.perfect) body += '<span class="gold-line">寸分違わぬ一太刀</span>';
     // 初めて極を出したときにだけ、何が起きたのかを明かす
     if (gained.firstPerfect) body += '<p class="reveal">威力が体力とぴったり同じ一太刀は、「極」となる。</p>';
 

@@ -313,3 +313,11 @@ body.timestop #enemy-area { transform: scale(1.03); transition: transform 1.2s e
 #trials-close { display: block; margin: 0 auto; color: #4d473e; border-color: #00000033; }
 #modal-body .unlock.trial { border-color: var(--kin); background: #f3e7c4; }
 #modal-body .unlock small { display: block; }
+
+/* ── 剣士の手応え ── */
+.voice { color: var(--text); font-size: 14px; line-height: 1.7; }
+.voice b { font-family: var(--brush); font-weight: 400; font-size: 17px; margin-right: 4px; }
+.voice.v-lose b { color: #e0806f; }
+.voice.v-win b { color: var(--kin); }
+.feel { margin-top: 2px; font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+.modal-voice { margin: 8px 0 4px; color: var(--ink); font-size: 14px; }
