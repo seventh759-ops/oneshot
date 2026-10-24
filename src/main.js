@@ -12,6 +12,9 @@
   let progress = loadProgress();
   let stageId = firstUnclearedStage();
   let charKey = 'toki';
+  let picking = 'toki'; // 選択画面で選んでいる剣士
+  let view = 'select';
+  const fresh = new Set(); // 加わったばかりの剣士（選択画面で「新」を付ける）
   let build = [];
   let attempts = 0;
   let busy = false;
@@ -83,16 +86,36 @@
     c.globalAlpha = 1;
   }
 
+  // 幕を開くと、まず剣士の選択画面
   function loadStage(id) {
     stageId = id;
     if (!unlocks().chars.has(charKey)) charKey = 'toki';
+    picking = charKey;
     attempts = 0;
     busy = false;
     resetBuild();
     resetEnemyView();
     drawEnso(stage().id);
     $('log').innerHTML = '';
+    showView('select');
+  }
+
+  function showView(v) {
+    view = v;
+    $('select-view').hidden = v !== 'select';
+    $('battle-view').hidden = v !== 'battle';
+    window.scrollTo(0, 0);
     render();
+  }
+
+  // 選んだ剣士で挑む
+  function enterBattle() {
+    if (picking !== charKey) { charKey = picking; attempts = 0; }
+    fresh.delete(charKey);
+    resetBuild();
+    $('log').innerHTML = '';
+    Sound.play('cutin');
+    showView('battle');
   }
 
   function resetBuild() {
@@ -100,10 +123,8 @@
   }
 
   function selectChar(key) {
-    if (busy || key === charKey) return;
-    charKey = key;
-    resetBuild();
-    $('log').innerHTML = '';
+    if (key === picking) return;
+    picking = key;
     Sound.play('place');
     render();
   }
@@ -146,11 +167,28 @@
     return out;
   }
 
-  function render() {
-    const st = stage();
-    const un = unlocks();
+  function enemyTags(st) {
+    const body = BODIES[st.body];
+    const tags = [`<span class="tag hp">体力 ${st.hp}</span>`];
+    if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
+    tags.push(`<span class="tag el">五行 ${elName(st.element)}</span>`);
+    tags.push(`<span class="tag">${body.name}：${body.desc}</span>`);
+    if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
+    return tags;
+  }
 
-    // 幕の選択
+  function charSummary(ck) {
+    const ch = CHARS[ck];
+    return `<span class="char-name">${ch.name}</span><span class="char-weapon">${ch.weapon}・${PHYS[ch.phys].name}・${elName(ch.element)}</span>`;
+  }
+
+  function render() {
+    renderHeader();
+    if (view === 'select') renderSelect();
+    else renderBattle();
+  }
+
+  function renderHeader() {
     $('stage-nav').innerHTML = '';
     STAGES.forEach((s) => {
       if (s.hidden && !stageOpen(s)) return;
@@ -165,44 +203,54 @@
       b.onclick = () => loadStage(s.id);
       $('stage-nav').appendChild(b);
     });
-    $('trials-btn').innerHTML = `試練帳 <b>${progress.trials.length}/${TRIALS.length}</b>`;
+    // 試練帳は、最初の試練を果たすまで存在ごと見せない
+    $('trials-btn').hidden = progress.trials.length === 0;
+    $('trials-btn').innerHTML = `試練帳 <b>${progress.trials.length}</b>`;
     $('trials-btn').disabled = busy;
+    $('mute-btn').textContent = Sound.muted ? '音：無' : '音：有';
+  }
+
+  // 剣士の選択画面：敵と向き合い、加わっている剣士だけを並べる
+  function renderSelect() {
+    const st = stage();
+    const un = unlocks();
+    $('vs-portrait').src = monsterImage(st);
+    $('vs-name').innerHTML = `${stageTitle(st)}<b>${st.enemy}</b>`;
+    $('vs-stats').innerHTML = enemyTags(st).join('');
+    $('vs-hint').textContent = st.hint;
+
+    $('chars').innerHTML = '';
+    CHAR_ORDER.filter((ck) => un.chars.has(ck)).forEach((ck) => {
+      const ch = CHARS[ck];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'char' + (ck === picking ? ' selected' : '');
+      b.setAttribute('aria-pressed', ck === picking);
+      const mu = matchup(ck, st).map(([k, t]) => `<span class="mu ${k}">${t}</span>`).join('');
+      b.innerHTML = `<span class="char-head">${charSummary(ck)}${fresh.has(ck) ? '<span class="new-mark">新たに加わった</span>' : ''}</span>`
+        + `<span class="char-trait"><b>${ch.trait}</b> ${ch.traitDesc}</span>`
+        + `<span class="char-mu">${mu || '<span class="mu">相性の有利不利なし</span>'}</span>`;
+      b.onclick = () => selectChar(ck);
+      b.ondblclick = enterBattle;
+      $('chars').appendChild(b);
+    });
+    $('go-btn').textContent = `${CHARS[picking].name}で挑む`;
+  }
+
+  function renderBattle() {
+    const st = stage();
 
     // 敵
     $('enemy-name').innerHTML = `${stageTitle(st)}<b>${st.enemy}</b>`;
     const img = monsterImage(st);
     document.querySelectorAll('.half').forEach((h) => { h.style.backgroundImage = `url(${img})`; });
-    const body = BODIES[st.body];
-    const tags = [`<span class="tag hp">体力 ${st.hp}</span>`];
-    if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
-    tags.push(`<span class="tag el">五行 ${elName(st.element)}</span>`);
-    tags.push(`<span class="tag">${body.name}：${body.desc}</span>`);
-    if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
-    else tags.push(`<span class="tag gold">極：ぴったり${st.hp}${progress.perfects.includes(st.id) ? ' 済' : ''}</span>`);
-    tags.push(`<span class="tag">${kanjiNum(attempts + 1)}太刀目</span>`);
-    $('enemy-stats').innerHTML = tags.join('');
+    $('enemy-stats').innerHTML = [...enemyTags(st), `<span class="tag">${kanjiNum(attempts + 1)}太刀目</span>`].join('');
     $('hint').textContent = st.hint;
 
-    // 剣士
-    $('chars').innerHTML = '';
-    CHAR_ORDER.forEach((ck) => {
-      const ch = CHARS[ck];
-      const open = un.chars.has(ck);
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'char' + (ck === charKey ? ' selected' : '') + (open ? '' : ' locked');
-      b.disabled = !open || busy;
-      if (open) {
-        const mu = matchup(ck, st).map(([k, t]) => `<span class="mu ${k}">${t}</span>`).join('');
-        b.innerHTML = `<span class="char-head"><span class="char-name">${ch.name}</span><span class="char-weapon">${ch.weapon}・${PHYS[ch.phys].name}・${elName(ch.element)}</span></span>`
-          + `<span class="char-trait"><b>${ch.trait}</b> ${ch.traitDesc}</span>`
-          + `<span class="char-mu">${mu || '<span class="mu">相性の有利不利なし</span>'}</span>`;
-      } else {
-        b.innerHTML = '<span class="char-head"><span class="char-name">？？？</span></span><span class="char-trait">試練を果たすと加わる</span>';
-      }
-      b.onclick = () => selectChar(ck);
-      $('chars').appendChild(b);
-    });
+    // 挑んでいる剣士
+    const ch = CHARS[charKey];
+    $('char-current').innerHTML = `<span class="char-head">${charSummary(charKey)}</span><span class="char-trait"><b>${ch.trait}</b> ${ch.traitDesc}</span>`;
+    $('change-char').disabled = busy;
 
     // 構え
     const { parts } = kit();
@@ -245,7 +293,6 @@
 
     $('attack-btn').disabled = busy || build.every((k) => !k);
     $('reset-btn').disabled = busy;
-    $('mute-btn').textContent = Sound.muted ? '音：無' : '音：有';
   }
 
   function breakdown(st, r) {
@@ -258,7 +305,7 @@
     parts.push(`最終 <b>${r.final}</b>／体力 ${st.hp}`);
     let verdict;
     if (r.perfect) verdict = '<span class="win">極。寸分違わず斬り伏せた。</span>';
-    else if (r.win) verdict = `<span class="win">一刀両断。（ぴったりなら極、${r.final - st.hp} 多い）</span>`;
+    else if (r.win) verdict = '<span class="win">一刀両断。</span>';
     else if (r.reflected) verdict = `<span class="lose">弾かれた。${r.final > st.hp ? '強すぎる' : '弱すぎる'}一太刀。</span>`;
     else if (r.relation === 'sho') verdict = '<span class="lose">吸い込まれた。五行が敵を生んでいる。</span>';
     else verdict = `<span class="lose">浅い。あと ${st.hp - r.final}。</span>`;
@@ -340,6 +387,7 @@
   // 勝ったときの記録。今回新たに得たもの（型・剣士・幕・試練）を返す
   function record(st, r) {
     const before = unlocks();
+    const firstPerfect = r.perfect && progress.perfects.length === 0;
     const firstClear = !progress.cleared.includes(st.id);
     if (firstClear) progress.cleared.push(st.id);
     if (r.perfect && !progress.perfects.includes(st.id)) progress.perfects.push(st.id);
@@ -359,6 +407,7 @@
       chars: [...after.chars].filter((c) => !before.chars.has(c)),
       stages: [...after.stages].filter((s) => !before.stages.has(s)),
       trials: newTrials,
+      firstPerfect,
     };
   }
 
@@ -438,7 +487,8 @@
     $('modal').classList.toggle('perfect', r.perfect);
     let body = `<span class="rank">${rank}</span><br>${CHARS[charKey].name}が${kanjiNum(attempts + 1)}太刀で斬った`;
     if (r.perfect) body += '<br><span class="gold-line">寸分違わぬ一太刀</span>';
-    else if (!st.exact) body += `<br><small>体力ぴったり（${st.hp}）で斬れば「極」</small>`;
+    // 初めて極を出したときにだけ、何が起きたのかを明かす
+    if (gained.firstPerfect) body += '<p class="reveal">威力が体力とぴったり同じ一太刀は、「極」となる。</p>';
 
     const items = [];
     gained.trials.forEach((t) => items.push(`<div class="unlock trial"><span class="seal">試</span><b>試練達成：${t.title}</b><small>報酬：${rewardText(t.reward)}</small></div>`));
@@ -450,7 +500,7 @@
     });
     gained.stages.forEach(() => items.push('<div class="unlock trial"><span class="seal">隠</span><b>隠し幕が開いた</b><small>幕の選択に「隠」が現れた</small></div>'));
     body += items.join('');
-    if (!next) body += `<br>極 ${progress.perfects.length}／${STAGES.length}・試練 ${progress.trials.length}／${TRIALS.length}`;
+    if (!next && !st.hidden) body += '<br>試作版の幕はここまで。';
     $('modal-body').innerHTML = body;
 
     $('modal-btn').textContent = next ? '次の幕へ' : '幕を選ぶ';
@@ -458,21 +508,18 @@
     Sound.play('clear');
     $('modal-btn').onclick = () => {
       $('modal').hidden = true;
+      gained.chars.forEach((c) => fresh.add(c));
       loadStage(next ? next.id : st.id);
     };
   }
 
-  // 試練帳：見つけた試練は条件を、まだ遠い試練は伏せて見せる
+  // 試練帳：果たした試練だけを記す（まだの試練は存在も見せない）
   function showTrials() {
-    $('trials-list').innerHTML = TRIALS.map((t) => {
-      const done = progress.trials.includes(t.id);
+    $('trials-list').innerHTML = TRIALS.filter((t) => progress.trials.includes(t.id)).map((t) => {
       const st = t.stage && STAGES.find((s) => s.id === t.stage);
-      const known = done || !st || stageOpen(st);
-      const where = st ? `${stageTitle(st)} ${st.enemy}` : '全幕';
-      const kind = t.reward.chars ? '新たな剣士' : t.reward.stages ? '隠し幕' : '秘伝の型';
-      return `<li class="${done ? 'done' : ''}"><span class="seal">${done ? '済' : '試'}</span>`
-        + `<b>${known ? t.title : '？？？'}</b><small>${known ? t.desc : `${where}に眠る試練`}</small>`
-        + `<small class="reward">報酬：${done ? rewardText(t.reward) : kind}</small></li>`;
+      return `<li class="done"><span class="seal">済</span><b>${t.title}</b>`
+        + `<small>${st ? `${stageTitle(st)} ${st.enemy}：` : ''}${t.desc}</small>`
+        + `<small class="reward">得たもの：${rewardText(t.reward)}</small></li>`;
     }).join('');
     $('trials-modal').hidden = false;
   }
@@ -487,6 +534,8 @@
   $('mute-btn').onclick = () => { Sound.toggle(); Sound.play('place'); render(); };
   $('trials-btn').onclick = () => { Sound.play('place'); showTrials(); };
   $('trials-close').onclick = () => { $('trials-modal').hidden = true; };
+  $('go-btn').onclick = enterBattle;
+  $('change-char').onclick = () => { if (!busy) { picking = charKey; Sound.play('remove'); showView('select'); } };
 
   loadStage(stageId);
 })();

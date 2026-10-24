@@ -12,55 +12,75 @@
   <h1>一太刀</h1>
   <nav id="stage-nav" aria-label="幕"></nav>
   <div class="header-tools">
-    <button id="trials-btn" class="ghost small" type="button"></button>
+    <button id="trials-btn" class="ghost small" type="button" hidden></button>
     <button id="mute-btn" class="ghost small" type="button"></button>
   </div>
 </header>
 
 <main>
-  <section id="enemy-area">
-    <div id="enemy-name"></div>
-    <div id="enemy-stage">
-      <canvas id="enso" width="440" height="440" aria-hidden="true"></canvas>
-      <div id="enemy-sprite"><span class="half a"></span><span class="half b"></span></div>
-      <div id="enemy-cut" aria-hidden="true"></div>
-      <div id="damage-pop" aria-live="polite"></div>
-      <div id="ink-burst" aria-hidden="true"></div>
-      <div id="stamp"></div>
-    </div>
-    <div id="enemy-stats"></div>
-    <div id="hint"></div>
-  </section>
-
-  <section id="chars-area">
-    <h2>剣士 <span class="sub">誰で斬るかで、効く型も変わる</span></h2>
-    <div id="chars"></div>
-    <details id="help">
-      <summary>相性の早見</summary>
-      <div class="help-body">
-        <p><b>計算の順</b>　威力 → 物理と体質 → 五行 → 装甲 → 体力と比べる</p>
-        <p><b>五行・相剋（克つ＝会心×3）</b>　水→火→金→木→土→水</p>
-        <p><b>五行・相生（生む＝吸収されて0）</b>　木→火→土→金→水→木</p>
-        <p><b>同じ五行</b>は半減。攻撃の五行は剣士の生まれ持ちで、「炎刃」「岩砕」を置くと変わる（後に置いたものが勝つ）。</p>
-        <p><b>物理</b>は剣士の武器で決まる。斬撃・打撃・刺突・巫術。「峰打ち」で打撃に変えられる。</p>
+  <div id="select-view" class="view">
+    <section id="select-area">
+      <div class="versus">
+        <img id="vs-portrait" alt="">
+        <div class="versus-text">
+          <div id="vs-name"></div>
+          <div id="vs-stats"></div>
+          <p id="vs-hint"></p>
+        </div>
       </div>
-    </details>
-  </section>
+    </section>
+    <section id="chars-area">
+      <h2>剣士を選ぶ <span class="sub">誰で斬るかで、効く型も変わる</span></h2>
+      <div id="chars"></div>
+      <details id="help">
+        <summary>相性の早見</summary>
+        <div class="help-body">
+          <p><b>計算の順</b>　威力 → 物理と体質 → 五行 → 装甲 → 体力と比べる</p>
+          <p><b>五行・相剋（克つ＝会心×3）</b>　水→火→金→木→土→水</p>
+          <p><b>五行・相生（生む＝吸収されて0）</b>　木→火→土→金→水→木</p>
+          <p><b>同じ五行</b>は半減。攻撃の五行は剣士の生まれ持ちで、「炎刃」「岩砕」を置くと変わる（後に置いたものが勝つ）。</p>
+          <p><b>物理</b>は剣士の武器で決まる。斬撃・打撃・刺突・巫術。「峰打ち」で打撃に変えられる。</p>
+        </div>
+      </details>
+      <div class="actions"><button id="go-btn" type="button"></button></div>
+    </section>
+  </div>
 
-  <section id="build-area">
-    <h2>構え <span class="sub">型は左から順に繰り出す／枠に触れると外す</span></h2>
-    <div id="slots"></div>
-    <div id="log"></div>
-    <div class="actions">
-      <button id="reset-btn" class="ghost" type="button">崩す</button>
-      <button id="attack-btn" type="button">抜刀</button>
-    </div>
-  </section>
+  <div id="battle-view" class="view" hidden>
+    <section id="enemy-area">
+      <div id="enemy-name"></div>
+      <div id="enemy-stage">
+        <canvas id="enso" width="440" height="440" aria-hidden="true"></canvas>
+        <div id="enemy-sprite"><span class="half a"></span><span class="half b"></span></div>
+        <div id="enemy-cut" aria-hidden="true"></div>
+        <div id="damage-pop" aria-live="polite"></div>
+        <div id="ink-burst" aria-hidden="true"></div>
+        <div id="stamp"></div>
+      </div>
+      <div id="enemy-stats"></div>
+      <div id="hint"></div>
+    </section>
 
-  <section id="parts-area">
-    <h2>型 <span class="sub">触れると空いた枠へ／各一度まで</span></h2>
-    <div id="parts"></div>
-  </section>
+    <section id="char-bar">
+      <div id="char-current"></div>
+      <button id="change-char" class="ghost small" type="button">剣士を替える</button>
+    </section>
+
+    <section id="build-area">
+      <h2>構え <span class="sub">型は左から順に繰り出す／枠に触れると外す</span></h2>
+      <div id="slots"></div>
+      <div id="log"></div>
+      <div class="actions">
+        <button id="reset-btn" class="ghost" type="button">崩す</button>
+        <button id="attack-btn" type="button">抜刀</button>
+      </div>
+    </section>
+
+    <section id="parts-area">
+      <h2>型 <span class="sub">触れると空いた枠へ／各一度まで</span></h2>
+      <div id="parts"></div>
+    </section>
+  </div>
 </main>
 
 <div id="cutin" hidden>
@@ -79,7 +99,7 @@
 <div id="trials-modal" class="sheet" hidden>
   <div class="modal-box">
     <div class="sheet-title">試練帳</div>
-    <p class="sheet-note">特定の条件で「極」を取ると、新たな剣士や秘伝が手に入る。</p>
+    <p class="sheet-note">これまでに果たした試練</p>
     <ul id="trials-list"></ul>
     <button id="trials-close" type="button" class="ghost">閉じる</button>
   </div>

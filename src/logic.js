@@ -170,27 +170,27 @@
   //   test(result, ctx) が true なら達成
   const TRIALS = [
     {
-      id: 'mud-nofocus', stage: 1, title: '足し算の極', desc: '一つ目泥坊主を、「集中」を使わずに極で斬る',
+      id: 'mud-nofocus', stage: 1, title: '足し算の極', desc: '「集中」を使わずに極を出した',
       test: (r, c) => r.perfect && !c.build.includes('focus'),
       reward: { parts: ['tsubame'] },
     },
     {
-      id: 'spider-blunt', stage: 3, title: '甲殻砕き', desc: '土蜘蛛を、打撃で極で斬る',
+      id: 'spider-blunt', stage: 3, title: '甲殻砕き', desc: '打撃で極を出した',
       test: (r) => r.perfect && r.phys === 'blunt',
       reward: { chars: ['hazuki'] },
     },
     {
-      id: 'eyes-thrust', stage: 2, title: '急所突き', desc: '百々目鬼を、刺突で極で斬る',
+      id: 'eyes-thrust', stage: 2, title: '急所突き', desc: '刺突で極を出した',
       test: (r) => r.perfect && r.phys === 'thrust',
       reward: { parts: ['mikiri'] },
     },
     {
-      id: 'ice-koku', stage: 5, title: '相剋の一太刀', desc: '氷喰らいを、相剋の会心で極で斬る',
+      id: 'ice-koku', stage: 5, title: '相剋の一太刀', desc: '相剋の会心で極を出した',
       test: (r) => r.perfect && r.relation === 'koku',
       reward: { chars: ['hisame'] },
     },
     {
-      id: 'all-perfect', stage: null, title: '百鬼斬り', desc: '第一幕〜第五幕のすべてで極を取る',
+      id: 'all-perfect', stage: null, title: '百鬼斬り', desc: '第一幕から第五幕まで、すべてで極を出した',
       test: null,
       reward: { stages: [6] },
     },
