@@ -490,12 +490,25 @@ async function fire() {
 
 // ── 効果音（Web Audio で合成） ──
 const Sound = (() => {
-  let ctx = null, master = null;
+  let ctx = null, master = null, verb = null;
   const ensure = () => {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+      ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.5;
+      // 全体をまとめるコンプレッサー（重い音を重ねても割れにくくする）
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.ratio.value = 4;
+      master.connect(comp); comp.connect(ctx.destination);
+      // 映画館のような長い残響：減衰するノイズをインパルスにする
+      const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+      }
+      verb = ctx.createConvolver(); verb.buffer = ir;
+      const wet = ctx.createGain(); wet.gain.value = 0.55;
+      verb.connect(wet); wet.connect(master);
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
@@ -515,6 +528,53 @@ const Sound = (() => {
     g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
     src.connect(f); f.connect(g); g.connect(master); src.start(t);
   };
+  // 出口：そのまま＋残響へ送る
+  const out = (node, send = 0.4) => {
+    node.connect(master);
+    if (verb && send) { const g = ctx.createGain(); g.gain.value = send; node.connect(g); g.connect(verb); }
+  };
+  // 金管：ずらした鋸波2本ずつを、開いて閉じるローパスに通す
+  const brass = (t, freqs, a, hold, rel, peak, open = 2400, send = 0.5) => {
+    const end = t + a + hold + rel;
+    const f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = 'lowpass'; f.Q.value = 0.8;
+    f.frequency.setValueAtTime(180, t); f.frequency.exponentialRampToValueAtTime(open, t + a); f.frequency.exponentialRampToValueAtTime(220, end);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.setValueAtTime(peak, t + a + hold); g.gain.exponentialRampToValueAtTime(0.0001, end);
+    f.connect(g); out(g, send);
+    for (const fr of freqs) for (const det of [-7, 7]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(end + 0.05);
+    }
+  };
+  // 歪ませた低音のブーム
+  const boom = (t, f0, f1, d, peak) => {
+    const o = ctx.createOscillator(), sh = ctx.createWaveShaper(), g = ctx.createGain();
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 3); }
+    sh.curve = curve;
+    o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + d);
+    g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(sh); sh.connect(g); out(g, 0.25); o.start(t); o.stop(t + d + 0.05);
+  };
+  // ティンパニ：音程が少し落ちる低い打撃
+  const timpani = (t, f, peak = 0.6) => {
+    tone('sine', f * 1.15, t, 0.004, peak, 1.4, f);
+    noise(t, 0.12, peak * 0.4, 'lowpass', 900, 200);
+  };
+  // 合唱のような響き：鋸波を母音の帯域に絞る
+  const choir = (t, freqs, a, d, peak) => {
+    for (const formant of [700, 1150]) {
+      const f = ctx.createBiquadFilter(), g = ctx.createGain();
+      f.type = 'bandpass'; f.frequency.value = formant; f.Q.value = 6;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+      f.connect(g); out(g, 0.8);
+      for (const fr of freqs) for (const det of [-10, 0, 10]) {
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.detune.value = det;
+        o.connect(f); o.start(t); o.stop(t + a + d + 0.05);
+      }
+    }
+  };
   const S = {
     tick: (t) => tone('sine', 1400, t, 0.002, 0.08, 0.05),
     type: (t) => tone('sine', 2200, t, 0.002, 0.02, 0.03),
@@ -523,10 +583,31 @@ const Sound = (() => {
     impact: (t) => { tone('sine', 90, t, 0.005, 0.9, 0.9, 35); noise(t, 0.35, 0.4, 'lowpass', 2000, 200); },
     hush: (t) => noise(t, 0.6, 0.06, 'highpass', 6000, 2000),
     bell: (t) => [988, 2470, 4200].forEach((f, i) => tone('sine', f, t, 0.003, 0.18 / (i + 1), 2.4)),
-    strike: (t) => { noise(t, 0.25, 0.8, 'highpass', 4000, 9000); tone('sine', 3000, t, 0.002, 0.15, 0.6, 1800); tone('sine', 60, t, 0.005, 0.8, 1.2, 30); },
-    win: (t) => [392, 523, 659].forEach((f, i) => tone('triangle', f, t + i * 0.12, 0.01, 0.15, 1.2)),
-    perfect: (t) => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, t + i * 0.1, 0.01, 0.14, 1.6)); S.bell(t + 0.6); },
-    death: (t) => { tone('sawtooth', 220, t, 0.01, 0.12, 1.4, 55); tone('sine', 110, t + 0.1, 0.01, 0.2, 1.6, 40); },
+    // 放つ：空気が裂ける音 → 歪んだ低音のブーム＋金管の一撃、長く残響する
+    strike: (t) => {
+      noise(t, 0.18, 0.7, 'highpass', 3000, 9000);
+      boom(t, 70, 26, 2.6, 0.9);
+      brass(t, [73.4, 110, 146.8], 0.02, 0.25, 1.6, 0.16, 2800, 0.6);
+      noise(t, 1.8, 0.25, 'lowpass', 1200, 80);
+    },
+    // 撃破：ティンパニ二打から、金管が短調で重く締める
+    win: (t) => {
+      timpani(t, 65.4); timpani(t + 0.22, 65.4, 0.5); timpani(t + 0.44, 49, 0.7);
+      brass(t + 0.44, [65.4, 98, 130.8, 155.6], 0.25, 0.9, 1.8, 0.14, 1800);
+    },
+    // 極：金管が長調へふくらみ、合唱と鈴が重なる
+    perfect: (t) => {
+      timpani(t, 49, 0.7); boom(t, 60, 30, 2, 0.5);
+      brass(t, [98, 146.8, 196, 246.9], 0.9, 1.6, 2.4, 0.13, 2600);
+      choir(t + 0.3, [196, 246.9, 293.7], 1.2, 3.2, 0.09);
+      S.bell(t + 1.1);
+    },
+    // 死亡：予告編のような重く沈む金管（ブォーン）と、不協和の残り香
+    death: (t) => {
+      boom(t, 48, 30, 3, 0.7);
+      brass(t, [55, 58.3, 82.4], 0.08, 1.1, 2.2, 0.2, 900, 0.7);
+      brass(t + 0.05, [110, 116.5], 0.08, 1.0, 2.0, 0.07, 700, 0.7);
+    },
   };
   return {
     unlock: ensure,
