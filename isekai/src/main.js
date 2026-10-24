@@ -16,7 +16,12 @@
 
   function load() {
     const empty = { cleared: [], perfects: [], deaths: 0, notes: {}, prologue: false };
-    try { return { ...empty, ...JSON.parse(localStorage.getItem(SAVE_KEY)) }; } catch { return empty; }
+    let data;
+    try { data = { ...empty, ...JSON.parse(localStorage.getItem(SAVE_KEY)) }; } catch { return empty; }
+    // 書き直した手がかりは、古い文言を新しい文言に置き換える
+    const RENAMED = { '速すぎて、狙っても捉えられない': '地を駆ける足が速すぎて、狙っても捉えられない。足を止めるか、それ以上の速さがあれば' };
+    for (const id of Object.keys(data.notes)) data.notes[id] = data.notes[id].map((n) => RENAMED[n] || n);
+    return data;
   }
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* 保存できなくても遊べる */ }
