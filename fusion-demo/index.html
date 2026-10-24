@@ -43,6 +43,7 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
 }
 #preview .ruby { font-size: 12px; letter-spacing: .25em; color: var(--violet); min-height: 1.4em; overflow-wrap: anywhere; }
 #preview .kanji { font-family: var(--mincho); font-weight: 800; font-size: clamp(28px, 7vw, 44px); letter-spacing: .12em; min-height: 1.3em; overflow-wrap: anywhere; }
+#preview .el { font-size: 11px; letter-spacing: .3em; margin-top: 6px; }
 #preview .empty { color: var(--muted); font-size: 14px; }
 
 #slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -93,8 +94,10 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
 #line { font-family: var(--mincho); font-size: clamp(16px, 4vw, 22px); letter-spacing: .1em; min-height: 1.6em; color: var(--text); opacity: .9; }
 #who { font-size: 11px; letter-spacing: .4em; color: var(--muted); }
 #name { display: grid; gap: 6px; }
-#name .ruby { font-size: clamp(11px, 2.6vw, 15px); letter-spacing: .35em; color: var(--violet); opacity: 0; overflow-wrap: anywhere; }
-#name .kanji { font-family: var(--mincho); font-weight: 800; font-size: clamp(36px, 11vw, 92px); letter-spacing: .1em; line-height: 1.1; opacity: 0; overflow-wrap: anywhere; text-shadow: 0 0 28px #9b7bff88; }
+#name .ruby { font-size: clamp(11px, 2.6vw, 15px); letter-spacing: .35em; color: var(--accent, var(--violet)); opacity: 0; overflow-wrap: anywhere; }
+#name .kanji { font-family: var(--mincho); font-weight: 800; font-size: clamp(36px, 11vw, 92px); letter-spacing: .1em; line-height: 1.1; opacity: 0; overflow-wrap: anywhere; text-shadow: 0 0 28px var(--accent, var(--violet)); }
+#name.glitch .kanji { animation: glitch .9s steps(2) 3; }
+@keyframes glitch { 0%, 100% { transform: none; text-shadow: 0 0 28px var(--accent); } 33% { transform: translateX(-6px); text-shadow: 8px 0 #7fe8ff, -8px 0 #d79bff; } 66% { transform: translateX(5px); text-shadow: -6px 0 #7fe8ff, 6px 0 #d79bff; } }
 #name.show .ruby { animation: ruby-in .5s ease-out forwards; }
 #name.show .kanji { animation: slam .45s cubic-bezier(.2,1.6,.4,1) .35s forwards; }
 @keyframes ruby-in { from { opacity: 0; letter-spacing: 1.2em; } to { opacity: 1; letter-spacing: .35em; } }
@@ -135,6 +138,7 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
   <section id="preview" aria-live="polite">
     <div class="ruby" id="pv-ruby"></div>
     <div class="kanji" id="pv-kanji"></div>
+    <div class="el" id="pv-el"></div>
   </section>
 
   <div id="slots"></div>
@@ -274,7 +278,10 @@ function render() {
   $('title-line').innerHTML = t ? `二つ名：<b>${t.kanji}</b>（${t.ruby}）` : '二つ名：なし（常時スキルを選ぶと付く）';
 
   const n = fusionName(slots);
+  const th = themeOf(slots);
   $('pv-ruby').textContent = n ? n.ruby : '';
+  $('pv-el').textContent = n ? `属性：${th.name}` : '';
+  $('pv-el').style.color = th.col;
   $('pv-kanji').innerHTML = n ? n.kanji : '<span class="empty">スキルを選ぶと、技名がここに組み上がる</span>';
 
   $('slots').innerHTML = '';
@@ -326,53 +333,229 @@ function render() {
   $('fire').disabled = busy || !n;
 }
 
-// ── 背景の粒子と衝撃波 ──
-const fx = { parts: [], rings: [], tone: '#9b7bff', run: false };
+// ── 属性ごとの色・エフェクト・音 ──
+//   技に入っている最初の属性（接頭）で決まる。属性がなければ「無」
+const THEMES = {
+  none: { name: '無', col: '#9b7bff', col2: '#ffffff', fx: 'burst' },
+  fire: { name: '炎', col: '#ff6a2b', col2: '#ffd36b', fx: 'embers' },
+  ice: { name: '氷', col: '#9fe8ff', col2: '#ffffff', fx: 'shards' },
+  thunder: { name: '雷', col: '#ffe14a', col2: '#ffffff', fx: 'bolts' },
+  water: { name: '水', col: '#3aa0ff', col2: '#b8e4ff', fx: 'ripples' },
+  wind: { name: '風', col: '#b8ffd8', col2: '#ffffff', fx: 'streaks' },
+  earth: { name: '土', col: '#c29a6b', col2: '#6b5238', fx: 'rocks' },
+  light: { name: '光', col: '#fff3b0', col2: '#ffffff', fx: 'rays' },
+  dark: { name: '闇', col: '#7a3cff', col2: '#1a0b3a', fx: 'vortex' },
+  poison: { name: '毒', col: '#8cff3a', col2: '#3b7a12', fx: 'bubbles' },
+  sound: { name: '音', col: '#ff9ce6', col2: '#ffffff', fx: 'waves' },
+  time: { name: '刻', col: '#e9c46a', col2: '#ffffff', fx: 'rewind' },
+  life: { name: '命', col: '#5fd98a', col2: '#e8ffb0', fx: 'petals' },
+  steel: { name: '鋼', col: '#d6dde8', col2: '#ffb347', fx: 'sparks' },
+  star: { name: '星', col: '#bcd7ff', col2: '#ffffff', fx: 'meteors' },
+  illusion: { name: '幻', col: '#d79bff', col2: '#7fe8ff', fx: 'phantom' },
+  blood: { name: '血', col: '#d0182f', col2: '#ff6b7a', fx: 'drops' },
+};
+const ELEMENT_OF = {
+  紅蓮: 'fire', 爆: 'fire', 氷華: 'ice', 雷霆: 'thunder', 蒼流: 'water', 疾風: 'wind', 岩砕: 'earth', 重星: 'earth',
+  聖光: 'light', 冥闇: 'dark', 虚空: 'dark', 毒牙: 'poison', 溶解: 'poison', 響: 'sound', 刻: 'time',
+  翠: 'life', 森羅: 'life', 鋼: 'steel', 流星: 'star', 幻影: 'illusion', 紅血: 'blood',
+};
+function themeOf(list) {
+  const first = list.find((k) => k !== null && SKILLS[k].group === 'prefix');
+  const key = first === undefined ? 'none' : ELEMENT_OF[SKILLS[first].kanji];
+  return { key, ...THEMES[key] };
+}
+
+// ── 背景の粒子 ──
+//   粒子は形（kind）と動き（重力 g、減速 drag、回転 vr）を持つ
+const fx = { parts: [], rings: [], bolts: [], rays: null, run: false };
+const dpr = () => devicePixelRatio || 1;
 function sizeCanvas() {
   const c = $('fx');
-  c.width = c.clientWidth * devicePixelRatio;
-  c.height = c.clientHeight * devicePixelRatio;
+  c.width = c.clientWidth * dpr();
+  c.height = c.clientHeight * dpr();
+}
+function center() { const c = $('fx'); return { W: c.width, H: c.height, cx: c.width / 2, cy: c.height / 2 }; }
+function add(p) {
+  fx.parts.push({ vx: 0, vy: 0, g: 0, drag: 1, rot: Math.random() * 6, vr: 0, kind: 'sq', s: 2 * dpr(), ...p, max: p.life });
 }
 function loop() {
   if (!fx.run) return;
-  const c = $('fx'), g = c.getContext('2d'), W = c.width, H = c.height;
-  g.fillStyle = 'rgba(0,0,0,0.25)';
+  const { W, H, cx, cy } = center(), g = $('fx').getContext('2d');
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = 'rgba(0,0,0,0.22)';
   g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'lighter';
+  // 光の柱（光）
+  if (fx.rays) {
+    const r = fx.rays; r.life--; r.a += 0.004;
+    g.globalAlpha = Math.max(0, r.life / r.max) * 0.22;
+    g.fillStyle = r.col;
+    for (let i = 0; i < 12; i++) {
+      const a = r.a + (i / 12) * Math.PI * 2, L = Math.max(W, H);
+      g.beginPath(); g.moveTo(cx, cy);
+      g.lineTo(cx + Math.cos(a - 0.025) * L, cy + Math.sin(a - 0.025) * L);
+      g.lineTo(cx + Math.cos(a + 0.025) * L, cy + Math.sin(a + 0.025) * L);
+      g.fill();
+    }
+    if (r.life <= 0) fx.rays = null;
+  }
   for (const p of fx.parts) {
-    p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.rewind && p.life === Math.floor(p.max / 2)) { p.vx *= -1.4; p.vy *= -1.4; }
+    if (p.spiral) { const dx = cx - p.x, dy = cy - p.y; p.vx += dx * 0.004 - dy * 0.006; p.vy += dy * 0.004 + dx * 0.006; }
+    p.vx *= p.drag; p.vy = p.vy * p.drag + p.g;
+    if (p.wobble) p.vx += Math.sin(p.life * 0.2) * 0.15 * dpr();
+    p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life--;
     g.globalAlpha = Math.max(0, p.life / p.max);
-    g.fillStyle = p.col;
-    g.fillRect(p.x, p.y, p.s, p.s);
+    g.fillStyle = p.col; g.strokeStyle = p.col;
+    if (p.kind === 'sq') g.fillRect(p.x, p.y, p.s, p.s);
+    else if (p.kind === 'circle') { g.lineWidth = dpr(); g.beginPath(); g.arc(p.x, p.y, p.s, 0, Math.PI * 2); p.fill ? g.fill() : g.stroke(); }
+    else if (p.kind === 'line') {
+      // 進む向きに伸びる線（破片・火花・流れ星）
+      const sp = Math.hypot(p.vx, p.vy) || 1, L = p.len || 20 * dpr();
+      g.lineWidth = p.s; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - (p.vx / sp) * L, p.y - (p.vy / sp) * L); g.stroke();
+    } else if (p.kind === 'leaf') {
+      g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.beginPath(); g.ellipse(0, 0, p.s * 2, p.s, 0, 0, Math.PI * 2); g.fill(); g.restore();
+    } else if (p.kind === 'rock') {
+      g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.8); g.restore();
+    }
   }
   fx.parts = fx.parts.filter((p) => p.life > 0);
   for (const r of fx.rings) {
-    r.r += r.v; r.life--;
+    r.r += r.v; r.v *= r.drag || 1; r.life--;
     g.globalAlpha = Math.max(0, r.life / r.max);
-    g.strokeStyle = r.col; g.lineWidth = 3 * devicePixelRatio;
-    g.beginPath(); g.arc(W / 2, H / 2, r.r, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = r.col; g.lineWidth = (r.w || 3) * dpr();
+    g.beginPath(); g.arc(cx, cy, r.r, 0, Math.PI * 2); g.stroke();
   }
   fx.rings = fx.rings.filter((r) => r.life > 0);
+  // 稲妻：数フレームだけ光るギザギザの線
+  for (const b of fx.bolts) {
+    b.life--;
+    g.globalAlpha = b.life % 3 === 0 ? 0.2 : 1;
+    g.strokeStyle = b.col; g.lineWidth = 3 * dpr(); g.shadowColor = b.col; g.shadowBlur = 18 * dpr();
+    g.beginPath(); b.pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    g.shadowBlur = 0;
+  }
+  fx.bolts = fx.bolts.filter((b) => b.life > 0);
   g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
   requestAnimationFrame(loop);
 }
 // 中心へ吸い込まれる粒子（溜め）
 function gather(col, n = 60) {
-  const c = $('fx'), W = c.width, H = c.height;
+  const { W, H, cx, cy } = center();
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, d = Math.max(W, H) * (0.4 + Math.random() * 0.3), life = 50 + Math.random() * 30;
-    const x = W / 2 + Math.cos(a) * d, y = H / 2 + Math.sin(a) * d;
-    fx.parts.push({ x, y, vx: (W / 2 - x) / life, vy: (H / 2 - y) / life, life, max: life, s: 2 * devicePixelRatio, col });
+    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+    add({ x, y, vx: (cx - x) / life, vy: (cy - y) / life, life, col });
   }
 }
-// 中心から弾ける粒子（撃破）
-function burst(col, n = 160, speed = 14) {
-  const c = $('fx'), W = c.width, H = c.height;
+// 中心から弾ける粒子
+function burst(col, n = 160, speed = 14, extra = {}) {
+  const { cx, cy } = center();
   for (let i = 0; i < n; i++) {
-    const a = Math.random() * Math.PI * 2, v = (Math.random() * speed + 2) * devicePixelRatio, life = 40 + Math.random() * 50;
-    fx.parts.push({ x: W / 2, y: H / 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, s: (1 + Math.random() * 3) * devicePixelRatio, col });
+    const a = Math.random() * Math.PI * 2, v = (Math.random() * speed + 2) * dpr();
+    add({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 40 + Math.random() * 50, s: (1 + Math.random() * 3) * dpr(), col, ...extra });
   }
 }
-function ring(col) { fx.rings.push({ r: 10, v: 26 * devicePixelRatio, life: 30, max: 30, col }); }
+function ring(col, extra = {}) { fx.rings.push({ r: 10, v: 26 * dpr(), life: 30, max: 30, col, ...extra }); }
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+// 属性ごとのエフェクト（放つ瞬間）
+const FX = {
+  burst: (t) => burst(t.col, 160),
+  // 炎：火の粉が舞い上がる
+  embers: (t) => {
+    burst(t.col, 120, 16, { drag: 0.96, g: -0.12 * dpr() });
+    burst(t.col2, 80, 10, { drag: 0.97, g: -0.18 * dpr(), s: 2 * dpr() });
+  },
+  // 氷：鋭い破片が飛び散る
+  shards: (t) => {
+    burst(t.col, 70, 30, { kind: 'line', len: 40 * dpr(), s: 2 * dpr(), drag: 0.9 });
+    burst(t.col2, 60, 8, { drag: 0.95 });
+    ring(t.col, { w: 1.5 });
+  },
+  // 雷：稲妻が何本も落ちる
+  bolts: (t) => {
+    const { W, cx, cy } = center();
+    for (let i = 0; i < 5; i++) {
+      let x = rnd(0, W), y = 0; const pts = [[x, y]];
+      while (y < cy) { y += rnd(20, 50) * dpr(); x += (cx - x) * 0.15 + rnd(-30, 30) * dpr(); pts.push([x, y]); }
+      fx.bolts.push({ pts, life: 14 + i * 3, col: i % 2 ? t.col2 : t.col });
+    }
+    burst(t.col, 90, 20, { kind: 'line', len: 12 * dpr(), s: 1.5 * dpr(), drag: 0.9 });
+  },
+  // 水：波紋が広がり、しぶきが落ちる
+  ripples: (t) => {
+    for (let i = 0; i < 5; i++) setTimeout(() => ring(t.col, { v: 14 * dpr(), drag: 0.98, life: 50, max: 50, w: 2 }), i * 120);
+    burst(t.col2, 90, 12, { kind: 'circle', fill: true, s: 2.5 * dpr(), g: 0.35 * dpr() });
+  },
+  // 風：横一文字の筋が走り抜ける
+  streaks: (t) => {
+    const { W, H } = center();
+    for (let i = 0; i < 70; i++) setTimeout(() => add({ x: rnd(-W * 0.3, 0), y: rnd(0, H), vx: rnd(14, 24) * dpr(), vy: rnd(-0.5, 0.5), life: 70, kind: 'line', len: rnd(80, 200) * dpr(), s: 1.5 * dpr(), col: i % 3 ? t.col : t.col2 }), i * 15);
+  },
+  // 土：岩の塊が飛び、重く落ちる
+  rocks: (t) => {
+    burst(t.col, 50, 18, { kind: 'rock', s: rnd(6, 14) * dpr(), g: 0.6 * dpr(), vr: 0.15 });
+    burst(t.col2, 80, 10, { g: 0.3 * dpr() });
+    $('stage').classList.add('shake');
+  },
+  // 光：光の柱が回り、白く弾ける
+  rays: (t) => {
+    fx.rays = { col: t.col, life: 90, max: 90, a: 0 };
+    burst(t.col2, 140, 16);
+  },
+  // 闇：渦を巻いて中心へ呑み込まれる
+  vortex: (t) => {
+    const { W, H, cx, cy } = center();
+    for (let i = 0; i < 160; i++) {
+      const a = rnd(0, 6.3), d = Math.max(W, H) * rnd(0.2, 0.6);
+      add({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, life: 80, col: i % 4 ? t.col : '#ffffff', spiral: true, drag: 0.92 });
+    }
+    ring('#000000', { w: 40, v: 10 * dpr(), life: 60, max: 60 });
+  },
+  // 毒：泡がゆらゆら昇る
+  bubbles: (t) => {
+    const { W, H } = center();
+    for (let i = 0; i < 70; i++) add({ x: rnd(W * 0.2, W * 0.8), y: rnd(H * 0.5, H), vy: -rnd(1, 3) * dpr(), life: 90, kind: 'circle', s: rnd(3, 10) * dpr(), col: i % 3 ? t.col : t.col2, wobble: true });
+    burst(t.col, 60, 10);
+  },
+  // 音：細い同心円が次々に広がる
+  waves: (t) => {
+    for (let i = 0; i < 9; i++) setTimeout(() => ring(i % 2 ? t.col : t.col2, { v: 18 * dpr(), life: 40, max: 40, w: 1 }), i * 70);
+  },
+  // 刻：弾けた粒が途中で巻き戻る
+  rewind: (t) => {
+    burst(t.col, 140, 12, { rewind: true, life: 70 });
+    ring(t.col2, { w: 1 });
+  },
+  // 命：花びらが舞う
+  petals: (t) => {
+    burst(t.col, 70, 9, { kind: 'leaf', s: 4 * dpr(), drag: 0.97, g: 0.05 * dpr(), vr: 0.08, life: 110 });
+    burst(t.col2, 40, 6, { kind: 'leaf', s: 3 * dpr(), drag: 0.97, g: 0.04 * dpr(), vr: -0.1, life: 110 });
+  },
+  // 鋼：火花が散って落ちる
+  sparks: (t) => {
+    burst(t.col2, 120, 26, { kind: 'line', len: 10 * dpr(), s: 1.5 * dpr(), g: 0.5 * dpr(), drag: 0.95 });
+    burst(t.col, 40, 8);
+  },
+  // 星：流れ星が斜めに降り注ぐ
+  meteors: (t) => {
+    const { W } = center();
+    for (let i = 0; i < 30; i++) setTimeout(() => add({ x: rnd(W * 0.3, W * 1.2), y: rnd(-200, 0), vx: -rnd(14, 22) * dpr(), vy: rnd(16, 24) * dpr(), life: 60, kind: 'line', len: rnd(80, 160) * dpr(), s: 2 * dpr(), col: i % 3 ? t.col : t.col2 }), i * 40);
+    burst(t.col2, 80, 14);
+  },
+  // 幻：残像がずれて揺らぐ
+  phantom: (t) => {
+    burst(t.col, 80, 10); burst(t.col2, 80, 10);
+    $('name').classList.add('glitch');
+  },
+  // 血：滴が飛び散って落ちる
+  drops: (t) => {
+    burst(t.col, 120, 16, { kind: 'circle', fill: true, s: rnd(2, 4) * dpr(), g: 0.45 * dpr() });
+    burst(t.col2, 40, 8, { kind: 'circle', fill: true, s: 1.5 * dpr(), g: 0.4 * dpr() });
+  },
+};
 
 // ── 演出 ──
 function majorGroup(list) {
@@ -407,6 +590,7 @@ async function fire() {
   const out = ending === 'random' ? ['win', 'perfect', 'death'][Math.floor(Math.random() * 3)] : ending;
   const n = fusionName(slots);
   const t = titleText();
+  const th = themeOf(slots);
   count++;
 
   // 舞台を整える
@@ -420,6 +604,7 @@ async function fire() {
   $('result').innerHTML = '';
   $('name').className = '';
   $('vignette').className = '';
+  $('stage').style.setProperty('--accent', out === 'perfect' ? '#e9c46a' : th.col);
   $('who').textContent = t ? `${t.kanji}（${t.ruby}）` : '';
 
   // 一. 静寂と決め台詞
@@ -427,13 +612,13 @@ async function fire() {
   await wait(500);
   const pool = LINES[majorGroup(slots)];
   await typeLine(pool[count % pool.length]);
-  gather(out === 'perfect' ? '#e9c46a' : '#9b7bff');
+  gather(out === 'perfect' ? '#e9c46a' : th.col);
   await wait(900);
 
   // 二. 技名を叫ぶ
   showName(n, false);
   Sound.play('shout');
-  setTimeout(() => { Sound.play('impact'); ring('#9b7bff'); }, reduced ? 100 : 380);
+  setTimeout(() => { Sound.play('impact'); ring(th.col); }, reduced ? 100 : 380);
   await wait(1500);
 
   // 極：真名解放
@@ -459,7 +644,9 @@ async function fire() {
   $('flash').className = 'on';
   $('stage').classList.add('shake');
   Sound.play('strike');
+  Sound.play('el_' + th.key);
   ring(out === 'perfect' ? '#e9c46a' : '#ffffff');
+  FX[th.fx](th);
   await wait(600);
   $('name').classList.add('fade');
   $('tag').textContent = '';
@@ -475,7 +662,7 @@ async function fire() {
     $('result').innerHTML = `<div class="aside">${aside}</div><div class="big death">死亡</div>`
       + `<div class="goddess">${GODDESS[count % GODDESS.length]}</div><button id="close" type="button">戦いの前に戻る</button>`;
   } else {
-    burst(out === 'perfect' ? '#e9c46a' : '#9b7bff', out === 'perfect' ? 260 : 160);
+    burst(out === 'perfect' ? '#e9c46a' : th.col, out === 'perfect' ? 260 : 100);
     Sound.play(out === 'perfect' ? 'perfect' : 'win');
     await wait(900);
     await typeLine(WIN_LINES[count % WIN_LINES.length]);
@@ -575,6 +762,66 @@ const Sound = (() => {
       }
     }
   };
+  // 金属の響き：倍音が整数倍にならない高い音を、少しずつずらして重ねる（刃の鳴り、銅鑼）
+  const metal = (t, base, ratios, d, peak, send = 0.6) => {
+    ratios.forEach((r, i) => {
+      for (const det of [-4, 4]) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = base * r; o.detune.value = det;
+        const dd = d * (1 - i * 0.08);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak / (i + 1), t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dd);
+        o.connect(g); out(g, send); o.start(t); o.stop(t + dd + 0.05);
+      }
+    });
+  };
+  // 弦楽器のような和音：鋸波を何本もずらして重ね、柔らかく絞って、ゆっくり立ち上げる
+  const pad = (t, freqs, a, hold, rel, peak, cutoff = 1600, send = 0.8) => {
+    const end = t + a + hold + rel;
+    const f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = 'lowpass'; f.Q.value = 0.3; f.frequency.setValueAtTime(cutoff * 0.4, t); f.frequency.linearRampToValueAtTime(cutoff, t + a);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.setValueAtTime(peak, t + a + hold); g.gain.exponentialRampToValueAtTime(0.0001, end);
+    f.connect(g); out(g, send);
+    for (const fr of freqs) for (const det of [-14, -6, 0, 6, 14]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(end + 0.05);
+    }
+  };
+  // きらめき：高い正弦波をゆらしながら散らす
+  const shimmer = (t, freqs, d, peak) => {
+    freqs.forEach((fr, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = fr;
+      lfo.frequency.value = 4 + i; lg.gain.value = peak * 0.4; lfo.connect(lg); lg.connect(g.gain);
+      const st = t + i * 0.18;
+      g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(peak, st + 0.6); g.gain.exponentialRampToValueAtTime(0.0001, st + d);
+      o.connect(g); out(g, 1); o.start(st); o.stop(st + d + 0.05); lfo.start(st); lfo.stop(st + d + 0.05);
+    });
+  };
+  // 細かく弾ける音（火の粉、電気）
+  const crackle = (t, d, n, f0, f1, peak) => {
+    for (let i = 0; i < n; i++) noise(t + Math.random() * d, 0.02, peak * (0.4 + Math.random() * 0.6), 'bandpass', f0, f1);
+  };
+  const EL = {
+    none: () => {},
+    fire: (t) => { noise(t, 1.4, 0.55, 'lowpass', 900, 120); crackle(t, 1.2, 26, 3000, 2000, 0.25); },
+    ice: (t) => { [2093, 2637, 3136, 4186, 5274].forEach((f, i) => tone('sine', f, t + i * 0.06, 0.002, 0.06, 1.4)); noise(t, 0.08, 0.5, 'highpass', 5000, 8000); },
+    thunder: (t) => { crackle(t, 0.5, 30, 2500, 5000, 0.35); noise(t + 0.15, 2.2, 0.45, 'lowpass', 400, 60); },
+    water: (t) => { noise(t, 0.9, 0.7, 'bandpass', 1400, 300); for (let i = 0; i < 8; i++) tone('sine', 500 + Math.random() * 600, t + 0.2 + i * 0.08, 0.005, 0.11, 0.08, 1400); },
+    wind: (t) => { noise(t, 1.3, 0.4, 'bandpass', 500, 2600); noise(t + 0.4, 1.0, 0.25, 'bandpass', 2600, 500); },
+    earth: (t) => { boom(t, 45, 25, 2.4, 0.6); noise(t, 0.25, 0.5, 'bandpass', 900, 300); crackle(t + 0.2, 1.0, 14, 600, 300, 0.3); },
+    light: (t) => { shimmer(t, [1568, 2093, 2637, 3136], 2.2, 0.06); metal(t, 1046, [1, 2.76, 5.4], 2.4, 0.07, 1); },
+    dark: (t) => { tone('sine', 38, t, 0.4, 0.5, 2.6, 30); pad(t, [55, 58.3, 77.8], 0.3, 0.6, 1.8, 0.03, 500, 0.8); },
+    poison: (t) => { for (let i = 0; i < 14; i++) tone('sine', 300 + Math.random() * 500, t + Math.random() * 1.2, 0.005, 0.1, 0.12, 900); noise(t, 0.8, 0.15, 'highpass', 3000, 6000); },
+    sound: (t) => { tone('sine', 440, t, 0.01, 0.18, 1.4, 1760); tone('sine', 660, t + 0.1, 0.01, 0.12, 1.4, 2640); },
+    time: (t) => { for (let i = 0; i < 6; i++) tone('square', 2400, t + i * 0.13, 0.001, 0.12, 0.03); noise(t + 0.8, 0.6, 0.45, 'bandpass', 300, 3000); },
+    life: (t) => { [784, 880, 1047, 1175, 1319].forEach((f, i) => tone('triangle', f, t + i * 0.09, 0.005, 0.11, 1.2)); },
+    steel: (t) => { metal(t, 620, [1, 2.4, 3.9, 5.6], 2.2, 0.12, 0.6); crackle(t, 0.4, 12, 6000, 4000, 0.25); },
+    star: (t) => { tone('sine', 3200, t, 0.01, 0.08, 0.9, 260); boom(t + 0.8, 70, 30, 1.6, 0.5); },
+    illusion: (t) => { [880, 885, 1320, 1327].forEach((f) => tone('sine', f, t, 0.3, 0.08, 1.8)); },
+    blood: (t) => { tone('sine', 70, t, 0.005, 0.6, 0.25, 50); tone('sine', 70, t + 0.32, 0.005, 0.45, 0.3, 45); },
+  };
   const S = {
     tick: (t) => tone('sine', 1400, t, 0.002, 0.08, 0.05),
     type: (t) => tone('sine', 2200, t, 0.002, 0.02, 0.03),
@@ -583,24 +830,26 @@ const Sound = (() => {
     impact: (t) => { tone('sine', 90, t, 0.005, 0.9, 0.9, 35); noise(t, 0.35, 0.4, 'lowpass', 2000, 200); },
     hush: (t) => noise(t, 0.6, 0.06, 'highpass', 6000, 2000),
     bell: (t) => [988, 2470, 4200].forEach((f, i) => tone('sine', f, t, 0.003, 0.18 / (i + 1), 2.4)),
-    // 放つ：空気が裂ける音 → 歪んだ低音のブーム＋金管の一撃、長く残響する
+    // 放つ：乾いた打撃 → 刃が空気を裂く → 金属の鳴りが長く残る。低音は短く締める
     strike: (t) => {
-      noise(t, 0.18, 0.7, 'highpass', 3000, 9000);
-      boom(t, 70, 26, 2.6, 0.9);
-      brass(t, [73.4, 110, 146.8], 0.02, 0.25, 1.6, 0.16, 2800, 0.6);
-      noise(t, 1.8, 0.25, 'lowpass', 1200, 80);
+      noise(t, 0.012, 0.9, 'highpass', 6000, 9000);
+      noise(t, 0.14, 1.0, 'bandpass', 9000, 1800);
+      metal(t + 0.01, 1580, [2, 2.76, 3.52, 4.31, 5.4], 1.8, 0.16, 0.7);
+      tone('sine', 5200, t + 0.01, 0.002, 0.05, 0.9, 4800);
+      boom(t, 90, 38, 0.45, 0.55);
     },
-    // 撃破：ティンパニ二打から、金管が短調で重く締める
+    // 撃破：静かに。遠くで一度だけ鳴る低い音と、深い残響の余韻
     win: (t) => {
-      timpani(t, 65.4); timpani(t + 0.22, 65.4, 0.5); timpani(t + 0.44, 49, 0.7);
-      brass(t + 0.44, [65.4, 98, 130.8, 155.6], 0.25, 0.9, 1.8, 0.14, 1800);
+      tone('sine', 73.4, t, 0.02, 0.35, 2.2, 70);
+      pad(t + 0.1, [146.8, 220], 1.2, 0.4, 2.4, 0.03, 900, 1);
+      metal(t + 0.3, 880, [1, 2.76, 5.4], 3, 0.015, 1);
     },
-    // 極：金管が長調へふくらみ、合唱と鈴が重なる
+    // 極：低い銅鑼と沈む低音から、弦の和音が4オクターブに広がり、高音のきらめきが降る
     perfect: (t) => {
-      timpani(t, 49, 0.7); boom(t, 60, 30, 2, 0.5);
-      brass(t, [98, 146.8, 196, 246.9], 0.9, 1.6, 2.4, 0.13, 2600);
-      choir(t + 0.3, [196, 246.9, 293.7], 1.2, 3.2, 0.09);
-      S.bell(t + 1.1);
+      boom(t, 55, 28, 2.6, 0.5);
+      metal(t, 82, [1, 1.48, 1.93, 2.6, 3.3, 4.1, 5.2], 5, 0.12, 0.9);
+      pad(t + 0.15, [73.4, 110, 146.8, 185, 220, 293.7, 370, 440], 1.6, 1.4, 3, 0.022, 2000);
+      shimmer(t + 1.2, [1174.7, 1480, 1760, 2349.3], 3.2, 0.025);
     },
     // 死亡：予告編のような重く沈む金管（ブォーン）と、不協和の残り香
     death: (t) => {
@@ -611,7 +860,11 @@ const Sound = (() => {
   };
   return {
     unlock: ensure,
-    play(name) { if (!ensure()) return; try { S[name](ctx.currentTime + 0.01); } catch { /* 音が出なくても続行 */ } },
+    play(name) {
+      if (!ensure()) return;
+      const fn = name.startsWith('el_') ? EL[name.slice(3)] : S[name];
+      try { fn(ctx.currentTime + 0.01); } catch { /* 音が出なくても続行 */ }
+    },
   };
 })();
 
