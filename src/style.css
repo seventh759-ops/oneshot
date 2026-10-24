@@ -10,6 +10,7 @@
   --muted: #958d80;
   --shu: #c63a2c;
   --kin: #c8a252;
+  --kin-hi: #f0d78a;
   --brush: "Yuji Syuku", "Hiragino Mincho ProN", "Yu Mincho", serif;
   --body: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
 }
@@ -194,3 +195,57 @@ section { background: var(--lacquer); border: 1px solid var(--line); border-radi
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
+
+/* ── 極（完全一致）── */
+#stage-nav button.perfect { border-color: var(--kin); color: var(--kin); }
+#stage-nav button.perfect.current { color: var(--washi); box-shadow: 0 0 0 2px var(--kin); }
+.tag.gold { border-color: #9a7a2e; color: #7a5c17; }
+#damage-pop.perfect { color: #8a6418; text-shadow: 0 0 14px var(--washi), 0 0 4px var(--washi), 0 0 24px var(--kin-hi); }
+#stamp.gold { border-color: var(--kin); color: #8a6418; font-size: 40px; padding: 2px 10px; box-shadow: 0 0 18px var(--kin-hi); }
+
+/* 時が止まる */
+main { transition: filter .5s; }
+body.timestop main { filter: grayscale(1) contrast(1.15) brightness(.75); }
+body.timestop #enemy-area { transform: scale(1.03); transition: transform 1.2s ease-out; }
+
+/* 金のカットイン */
+#cutin.perfect { background: #000c; }
+#cutin.perfect .band { background: var(--washi); border-color: var(--kin); height: 190px; border-width: 6px; }
+#cutin.perfect .speed { background: repeating-linear-gradient(90deg, transparent 0 40px, #c8a2522e 40px 43px, transparent 43px 90px); }
+#cutin.perfect .cutin-text { color: var(--shu); font-size: 140px; letter-spacing: 0; text-shadow: 5px 5px 0 var(--ink), 0 0 30px var(--kin-hi); }
+#cutin.perfect .cutin-sub { color: var(--ink); }
+#cutin.perfect.on .band { animation: band-perfect 1.15s cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes band-perfect {
+  0% { transform: rotate(-8deg) translateX(100%); } 18% { transform: rotate(-8deg) translateX(0); }
+  30% { transform: rotate(-8deg) scale(1.06); } 85% { transform: rotate(-8deg) translateX(-2%); }
+  100% { transform: rotate(-8deg) translateX(-110%); }
+}
+
+/* 金の一筋、そして十字 */
+.slash-line { grid-area: 1 / 1; }
+#blackout { grid-template-areas: "a"; }
+.slash-line.l2, .slash-line.l3 { display: none; transform-origin: center; }
+#blackout.perfect .slash-line { background: var(--kin-hi); box-shadow: 0 0 18px 4px var(--kin-hi), 0 0 70px 14px var(--kin); }
+#blackout.perfect.slash .slash-line:first-child { animation: slash-slow .65s cubic-bezier(.6,0,.2,1) forwards; }
+@keyframes slash-slow { 0% { transform: rotate(-13deg) scaleX(0); opacity: 1; } 100% { transform: rotate(-13deg) scaleX(1); opacity: 1; } }
+#blackout.perfect.cross .l2, #blackout.perfect.cross .l3 { display: block; }
+#blackout.perfect.cross .l2 { animation: slash2 .3s cubic-bezier(.9,0,.1,1) forwards; }
+#blackout.perfect.cross .l3 { animation: slash3 .3s .11s cubic-bezier(.9,0,.1,1) forwards; }
+@keyframes slash2 { 0% { transform: rotate(32deg) scaleX(0); opacity: 1; } 100% { transform: rotate(32deg) scaleX(1); opacity: 1; } }
+@keyframes slash3 { 0% { transform: rotate(-58deg) scaleX(0); opacity: 1; } 100% { transform: rotate(-58deg) scaleX(1); opacity: 1; } }
+#blackout.perfect.cross { animation: whiteout .55s .2s forwards; }
+@keyframes whiteout { 0% { background: #000; } 40% { background: #fff8e6; } 100% { background: #fff8e6; } }
+#blackout.perfect.fade { opacity: 0; transition: opacity .5s; }
+
+/* 墨の飛沫 */
+#ink-burst { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+#ink-burst i {
+  position: absolute; border-radius: 50%; background: var(--ink); left: 0; top: 0;
+  animation: burst .6s cubic-bezier(.1,.8,.3,1) forwards;
+}
+@keyframes burst { 0% { transform: translate(-50%, -50%); opacity: 1; } 100% { transform: translate(calc(var(--x) - 50%), calc(var(--y) - 50%)); opacity: .85; } }
+
+/* 極の巻物 */
+#modal.perfect .modal-box { border-color: var(--kin); box-shadow: 0 0 40px #c8a25266; }
+#modal.perfect #modal-title { color: var(--shu); font-size: 64px; line-height: 1.1; }
+.gold-line { color: #8a6418; font-weight: bold; letter-spacing: .2em; }

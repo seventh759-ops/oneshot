@@ -15,13 +15,14 @@ function* builds(parts, slots) {
 }
 
 for (const st of STAGES) {
-  let total = 0, wins = [], best = 0;
+  let total = 0, wins = [], best = 0, perfect = 0;
   for (const b of builds(st.parts, st.slots)) {
     total++;
     const r = simulate(st, b);
     best = Math.max(best, r.final);
     if (r.win) wins.push(b.join(','));
+    if (r.perfect) perfect++;
   }
-  console.log(`Stage ${st.id} ${st.enemy}: HP${st.hp} 最大${best} 解 ${wins.length}/${total}`);
+  console.log(`Stage ${st.id} ${st.enemy}: HP${st.hp} 最大${best} 解 ${wins.length}/${total}（うち極 ${perfect}）`);
   wins.slice(0, 10).forEach((w) => console.log('   ', w));
 }

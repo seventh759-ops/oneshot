@@ -3,19 +3,24 @@
   const Sound = window.Sound;
   const $ = (id) => document.getElementById(id);
   const SAVE_KEY = 'oneshot-progress-v1';
+  const PERFECT_KEY = 'oneshot-perfect-v1';
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let cleared = loadProgress();
+  let cleared = loadProgress(SAVE_KEY);
+  let perfects = loadProgress(PERFECT_KEY);
   let stageIdx = Math.min(cleared.length, STAGES.length - 1);
   let build = [];
   let attempts = 0;
   let busy = false;
 
-  function loadProgress() {
-    try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || []; } catch { return []; }
+  function loadProgress(key) {
+    try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; }
   }
   function saveProgress() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(cleared)); } catch { /* 保存できなくても遊べる */ }
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(cleared));
+      localStorage.setItem(PERFECT_KEY, JSON.stringify(perfects));
+    } catch { /* 保存できなくても遊べる */ }
   }
 
   const stage = () => STAGES[stageIdx];
@@ -82,6 +87,8 @@
     sprite.className = '';
     $('enemy-cut').className = '';
     $('stamp').className = '';
+    $('ink-burst').innerHTML = '';
+    document.body.classList.remove('timestop');
     $('damage-pop').className = '';
     $('enso').style.opacity = '';
   }
@@ -101,6 +108,7 @@
       b.textContent = kanjiNum(s.id);
       b.title = `第${kanjiNum(s.id)}幕 ${s.enemy}`;
       if (cleared.includes(s.id)) b.classList.add('cleared');
+      if (perfects.includes(s.id)) { b.classList.add('perfect'); b.title += '（極）'; }
       if (i === stageIdx) b.classList.add('current');
       b.disabled = i > cleared.length || busy;
       b.onclick = () => loadStage(i);
@@ -114,6 +122,7 @@
     if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
     if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
     if (st.weakFlame) tags.push('<span class="tag special">弱点：炎（会心×3）</span>');
+    if (!st.exact) tags.push(`<span class="tag gold">極：ぴったり${st.hp}${perfects.includes(st.id) ? ' 済' : ''}</span>`);
     tags.push(`<span class="tag">${kanjiNum(attempts + 1)}太刀目</span>`);
     $('enemy-stats').innerHTML = tags.join('');
     $('hint').textContent = st.hint;
@@ -159,7 +168,8 @@
     if (st.armor) parts.push(r.pierce ? '装甲 <b>貫通</b>' : `装甲 <b>−${r.armorApplied}</b>`);
     parts.push(`最終 <b>${r.final}</b>／体力 ${st.hp}`);
     let verdict;
-    if (r.win) verdict = '<span class="win">一刀両断。</span>';
+    if (r.perfect) verdict = '<span class="win">極。寸分違わず斬り伏せた。</span>';
+    else if (r.win) verdict = `<span class="win">一刀両断。（ぴったりなら極、${r.final - st.hp} 多い）</span>`;
     else if (r.reflected) verdict = `<span class="lose">弾かれた。${r.final > st.hp ? '強すぎる' : '弱すぎる'}一太刀。</span>`;
     else verdict = `<span class="lose">浅い。あと ${st.hp - r.final}。</span>`;
     return parts.join(' → ') + '<br>' + verdict;
@@ -193,52 +203,44 @@
     }
     await wait(200);
 
-    // 成功したときだけ、カットイン → 暗転 → 一閃
     const bo = $('blackout');
-    if (r.win) {
-      const cutin = $('cutin');
-      cutin.querySelector('.cutin-sub').textContent = `${st.enemy}、斬る`;
-      cutin.hidden = false;
-      cutin.classList.remove('on');
-      void cutin.offsetWidth;
-      cutin.classList.add('on');
-      Sound.play('cutin');
-      await wait(820);
-
-      bo.className = '';
-      bo.hidden = false;
-      cutin.hidden = true;
-      await wait(450);
-      bo.classList.add('slash');
-      Sound.play('slash');
-      await wait(420);
-    }
+    if (r.perfect) await perfectCinematic(st, bo);
+    else if (r.win) await normalCinematic(st, bo);
 
     // 結果
     const sprite = $('enemy-sprite');
-    if (r.win) { sprite.classList.add('split'); $('enemy-cut').classList.add('on'); $('enso').style.opacity = '.15'; }
-    else sprite.classList.add(r.reflected ? 'reflect' : 'shake');
+    if (r.win) {
+      sprite.classList.add('split');
+      $('enemy-cut').classList.add('on');
+      $('enso').style.opacity = '.15';
+      if (r.perfect) inkBurst();
+    } else sprite.classList.add(r.reflected ? 'reflect' : 'shake');
     const pop = $('damage-pop');
-    pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.final}</small>`;
-    pop.className = r.critical ? 'crit' : '';
+    pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.perfect ? '寸分違わず' : r.final}</small>`;
+    pop.className = r.perfect ? 'perfect' : r.critical ? 'crit' : '';
     void pop.offsetWidth;
     pop.classList.add('show');
     const stamp = $('stamp');
-    stamp.textContent = r.win ? '撃破' : r.reflected ? '反射' : '浅し';
+    stamp.textContent = r.perfect ? '極' : r.win ? '撃破' : r.reflected ? '反射' : '浅し';
+    stamp.className = r.perfect ? 'gold' : '';
+    void stamp.offsetWidth;
     stamp.classList.add('on');
-    Sound.play(r.win ? 'win' : r.reflected ? 'reflect' : 'fail');
+    Sound.play(r.perfect ? 'perfect' : r.win ? 'win' : r.reflected ? 'reflect' : 'fail');
     $('log').innerHTML = breakdown(st, r);
     if (r.win) {
+      document.body.classList.remove('timestop');
       bo.classList.add('fade');
       await wait(260);
       bo.hidden = true;
     }
 
-    await wait(r.win ? 1500 : 1100);
+    await wait(r.perfect ? 2000 : r.win ? 1500 : 1100);
 
     if (r.win) {
-      if (!cleared.includes(st.id)) { cleared.push(st.id); saveProgress(); }
-      showClear(st);
+      if (!cleared.includes(st.id)) cleared.push(st.id);
+      if (r.perfect && !perfects.includes(st.id)) perfects.push(st.id);
+      saveProgress();
+      showClear(st, r);
     } else {
       // 失敗：構えはそのまま残して、すぐ次の一太刀へ
       attempts++;
@@ -249,16 +251,80 @@
     }
   }
 
-  function showClear(st) {
+  function showCutin(text, sub, perfect) {
+    const cutin = $('cutin');
+    cutin.querySelector('.cutin-text').textContent = text;
+    cutin.querySelector('.cutin-sub').textContent = sub;
+    cutin.className = perfect ? 'perfect' : '';
+    cutin.hidden = false;
+    void cutin.offsetWidth;
+    cutin.classList.add('on');
+  }
+
+  // 条件クリア：カットイン → 暗転 → 一閃
+  async function normalCinematic(st, bo) {
+    showCutin('一閃', `${st.enemy}、斬る`, false);
+    Sound.play('cutin');
+    await wait(820);
+    bo.className = '';
+    bo.hidden = false;
+    $('cutin').hidden = true;
+    await wait(450);
+    bo.classList.add('slash');
+    Sound.play('slash');
+    await wait(420);
+  }
+
+  // 完全一致：時が止まる → 金のカットイン → 長い静寂 → 金の一筋 → 十字に斬り裂く
+  async function perfectCinematic(st, bo) {
+    document.body.classList.add('timestop');
+    Sound.play('heartbeat');
+    await wait(750);
+    showCutin('極', `寸分違わず ── ${st.enemy}`, true);
+    Sound.play('cutin');
+    Sound.play('bell');
+    await wait(1150);
+    bo.className = 'perfect';
+    bo.hidden = false;
+    $('cutin').hidden = true;
+    await wait(700);
+    bo.classList.add('slash');
+    Sound.play('slash');
+    await wait(650);
+    bo.classList.add('cross');
+    Sound.play('slash');
+    await wait(110);
+    Sound.play('slash');
+    await wait(420);
+  }
+
+  // 極のとき、墨が四方に飛び散る
+  function inkBurst() {
+    const box = $('ink-burst');
+    box.innerHTML = '';
+    for (let i = 0; i < 26; i++) {
+      const d = document.createElement('i');
+      const a = Math.random() * Math.PI * 2;
+      const dist = 70 + Math.random() * 90;
+      const size = 4 + Math.random() * 12;
+      d.style.cssText = `--x:${Math.cos(a) * dist}px;--y:${Math.sin(a) * dist}px;width:${size}px;height:${size}px;animation-delay:${Math.random() * 0.08}s`;
+      box.appendChild(d);
+    }
+  }
+
+  function showClear(st, r) {
     const rank = attempts === 0 ? '免許皆伝' : attempts <= 2 ? '目録' : '修行中';
     const last = stageIdx === STAGES.length - 1;
-    $('modal-title').textContent = '一刀両断';
+    $('modal-title').textContent = r.perfect ? '極' : '一刀両断';
+    $('modal').classList.toggle('perfect', r.perfect);
     let body = `<span class="rank">${rank}</span><br>${kanjiNum(attempts + 1)}太刀で斬った`;
+    if (r.perfect) body += '<br><span class="gold-line">寸分違わぬ一太刀</span>';
+    else if (!st.exact) body += `<br><small>体力ぴったり（${st.hp}）で斬れば「極」</small>`;
     if (st.unlock) {
       const p = PARTS[st.unlock];
       body += `<div class="unlock">${seal(st.unlock)}<b>新たな型：${p.name}</b><small>${p.desc}</small></div>`;
     }
-    if (last) body += '<br>試作版はここまで。遊んでくれてありがとう。';
+    if (last) body += `<br>試作版はここまで。極 ${perfects.length}／${STAGES.length}`;
     $('modal-body').innerHTML = body;
     $('modal-btn').textContent = last ? '幕を選ぶ' : '次の幕へ';
     $('modal').hidden = false;

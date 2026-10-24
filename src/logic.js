@@ -64,7 +64,7 @@
       look: { body: 'tall', eyes: 9, mouth: 'none', seed: 11 },
     },
     {
-      id: 3, enemy: '土蜘蛛', hp: 16, armor: 12,
+      id: 3, enemy: '土蜘蛛', hp: 14, armor: 12,
       slots: 4, parts: ['strike', 'hone', 'focus', 'zanshin', 'charge', 'pierce'], unlock: 'echo',
       hint: '甲殻が分厚い。削り合うか、貫くか。',
       look: { body: 'spider', eyes: 6, mouth: 'fang', seed: 23 },
@@ -101,7 +101,9 @@
     dmg -= armorApplied;
     const win = stage.exact ? dmg === stage.hp : dmg >= stage.hp;
     const reflected = stage.exact && dmg !== stage.hp && dmg > 0;
-    return { steps, raw: s.dmg, critical, armorApplied, pierce: s.pierce, final: dmg, win, reflected };
+    // 体力ぴったりで斬った（極）
+    const perfect = win && dmg === stage.hp;
+    return { steps, raw: s.dmg, critical, armorApplied, pierce: s.pierce, final: dmg, win, reflected, perfect };
   }
 
   const api = { PARTS, STAGES, simulate };
