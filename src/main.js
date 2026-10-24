@@ -1,7 +1,7 @@
 (function () {
   const {
     ELEMENTS, PHYS, BODIES, CHARS, CHAR_ORDER, PARTS, STAGES, TRIALS,
-    elementRelation, unlocked, loadout, simulate,
+    elementRelation, unlocked, loadout, foeStage, simulate,
   } = window.OneShot;
   const Sound = window.Sound;
   const $ = (id) => document.getElementById(id);
@@ -16,7 +16,8 @@
   let view = 'select';
   const fresh = new Set(); // 加わったばかりの剣士（選択画面で「新」を付ける）
   let build = [];
-  let attempts = 0;
+  let attempts = 0; // この幕で仕損じた回数（仕切り直すまで数える）
+  let sealed = []; // 雲外鏡に映し取られた五行
   let busy = false;
 
   function loadProgress() {
@@ -32,6 +33,8 @@
   }
 
   const stage = () => STAGES.find((s) => s.id === stageId);
+  // 仕損じた回数などを反映した、いまの敵
+  const foe = () => foeStage(stage(), { tries: attempts, sealed });
   const unlocks = () => unlocked(progress);
   const kit = () => loadout(stage(), charKey, unlocks().secrets);
   const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? ms * 0.4 : ms));
@@ -92,6 +95,7 @@
     if (!unlocks().chars.has(charKey)) charKey = 'toki';
     picking = charKey;
     attempts = 0;
+    sealed = [];
     busy = false;
     resetBuild();
     resetEnemyView();
@@ -110,7 +114,7 @@
 
   // 選んだ剣士で挑む
   function enterBattle() {
-    if (picking !== charKey) { charKey = picking; attempts = 0; }
+    charKey = picking;
     fresh.delete(charKey);
     resetBuild();
     $('log').innerHTML = '';
@@ -153,6 +157,7 @@
   function matchup(ck, st) {
     const ch = CHARS[ck];
     const out = [];
+    if ((st.sealed || []).includes(ch.element)) out.push(['bad', `${elName(ch.element)}の気は映し取られた`]);
     const rel = elementRelation(ch.element, st.element);
     if (rel.kind === 'koku') out.push(['good', `${elName(ch.element)}は${elName(st.element)}に克つ ×3`]);
     if (rel.kind === 'sho') out.push(['bad', `${elName(ch.element)}は${elName(st.element)}を生む 吸収`]);
@@ -169,11 +174,27 @@
 
   function enemyTags(st) {
     const body = BODIES[st.body];
-    // 体力や装甲の数値は見せない。見てわかる五行と体質だけ
-    const tags = [`<span class="tag el">五行 ${elName(st.element)}</span>`];
+    // 体力や装甲の数値は見せない。見てわかる五行・体質・いまの様子だけ
+    const tags = [`<span class="tag el">${st.trait === 'shift' ? 'いまの気配' : '五行'} ${elName(st.element)}</span>`];
     tags.push(`<span class="tag">${body.name}：${body.desc}</span>`);
     if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
+    if (st.trait === 'rage' && attempts > 0) tags.push(`<span class="tag special">怒り ${kanjiNum(attempts)}段</span>`);
+    if (st.trait === 'mirror' && sealed.length) tags.push(`<span class="tag special">映し取られた気：${sealed.map(elName).join('・')}</span>`);
     return tags;
+  }
+
+  // 仕損じたあと、敵がどう変わったか
+  function reaction(st, r) {
+    if (st.trait === 'mirror' && r.element && !sealed.includes(r.element)) {
+      sealed.push(r.element);
+      return `${st.enemy}が、${elName(r.element)}の気を鏡に映し取った。`;
+    }
+    if (st.trait === 'rage') return `${st.enemy}が怒り、身を覆う氷がさらに厚くなった。`;
+    if (st.trait === 'shift') {
+      const next = st.shiftOrder[(attempts + 1) % st.shiftOrder.length];
+      return `${st.enemy}の気配が移ろう……いまは${elName(next)}。`;
+    }
+    return null;
   }
 
   function charSummary(ck) {
@@ -211,7 +232,7 @@
 
   // 剣士の選択画面：敵と向き合い、加わっている剣士だけを並べる
   function renderSelect() {
-    const st = stage();
+    const st = foe();
     const un = unlocks();
     $('vs-portrait').src = monsterImage(st);
     $('vs-name').innerHTML = `${stageTitle(st)}<b>${st.enemy}</b>`;
@@ -237,7 +258,7 @@
   }
 
   function renderBattle() {
-    const st = stage();
+    const st = foe();
 
     // 敵
     $('enemy-name').innerHTML = `${stageTitle(st)}<b>${st.enemy}</b>`;
@@ -250,6 +271,8 @@
     const ch = CHARS[charKey];
     $('char-current').innerHTML = `<span class="char-head">${charSummary(charKey)}</span><span class="char-trait"><b>${ch.trait}</b> ${ch.traitDesc}</span>`;
     $('change-char').disabled = busy;
+    $('restart-btn').hidden = attempts === 0;
+    $('restart-btn').disabled = busy;
 
     // 構え
     const { parts } = kit();
@@ -295,17 +318,18 @@
   }
 
   // 結果は数値で見せず、剣士の言葉と手応えで返す
-  function feedback(st, r) {
+  function feedback(st, r, react) {
     const { line, feel } = window.Voice.comment(charKey, st, r);
     const cls = r.win ? 'v-win' : 'v-lose';
     return `<div class="voice ${cls}"><b>${CHARS[charKey].name}</b>「${line}」</div>`
-      + (feel ? `<div class="feel">手応え：${feel}</div>` : '');
+      + (feel ? `<div class="feel">手応え：${feel}</div>` : '')
+      + (react ? `<div class="react">${react}</div>` : '');
   }
 
   async function attack() {
     if (busy) return;
     Sound.unlock();
-    const st = stage();
+    const st = foe();
     const r = simulate(st, build, charKey);
     busy = true;
     render();
@@ -352,7 +376,7 @@
       pop.classList.add('show');
     }
     const stamp = $('stamp');
-    stamp.textContent = r.perfect ? '極' : r.win ? '撃破' : r.reflected ? '反射' : r.relation === 'sho' ? '吸収' : '浅し';
+    stamp.textContent = r.perfect ? '極' : r.win ? '撃破' : r.reflected ? '反射' : r.relation === 'sho' || r.sealed ? '吸収' : '浅し';
     stamp.className = r.perfect ? 'gold' : '';
     void stamp.offsetWidth;
     stamp.classList.add('on');
@@ -369,12 +393,13 @@
 
     if (r.win) showClear(st, r, record(st, r));
     else {
-      // 失敗：構えはそのまま残して、すぐ次の一太刀へ
+      // 失敗：構えはそのまま残して、すぐ次の一太刀へ。敵は仕損じに応じて変わる
+      const react = reaction(st, r);
       attempts++;
       busy = false;
       resetEnemyView();
       render();
-      $('log').innerHTML = feedback(st, r);
+      $('log').innerHTML = feedback(st, r, react);
     }
   }
 
@@ -530,6 +555,15 @@
   $('trials-btn').onclick = () => { Sound.play('place'); showTrials(); };
   $('trials-close').onclick = () => { $('trials-modal').hidden = true; };
   $('go-btn').onclick = enterBattle;
+  // 仕切り直す：敵の怒りや映し身を元に戻し、一太刀目からやり直す
+  $('restart-btn').onclick = () => {
+    if (busy) return;
+    attempts = 0;
+    sealed = [];
+    $('log').innerHTML = '';
+    Sound.play('remove');
+    render();
+  };
   $('change-char').onclick = () => { if (!busy) { picking = charKey; Sound.play('remove'); showView('select'); } };
 
   loadStage(stageId);

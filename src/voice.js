@@ -3,6 +3,8 @@
   // 剣士ごとのセリフ。phys は体質ごとに分ける（無い体質は generic）
   const LINES = {
     toki: {
+      web: '刃が糸に絡まった！ 二度目の振りが出ねえ',
+      sealed: '見せた火を、そのまま返された……',
       sho: '炎が呑まれた！？ あいつ、俺の火を喰って膨らんでやがる',
       over: '跳ね返された！ 力みすぎたか',
       under: '鏡に映っただけだ……軽すぎる',
@@ -14,6 +16,8 @@
       perfect: '……今のは何だ。刃が吸い込まれるように通った',
     },
     tessai: {
+      web: '糸じゃ。返しの一撃が絡め取られた',
+      sealed: '一度見せた気は、もう通らぬか',
       sho: 'ぬう……打った力を、逆に喰われたわ',
       over: '力任せが過ぎたか。鏡に押し返された',
       under: '軽い。鏡が嗤っておる',
@@ -25,6 +29,8 @@
       perfect: 'ほう……寸分の狂いもない。久しく忘れておった感触じゃ',
     },
     hazuki: {
+      web: '……穂先が糸に絡め取られました。繰り返しは通じません',
+      sealed: '先ほどの気を、鏡が覚えています',
       sho: '……槍が吸われました。力を与えてしまったようです',
       over: '強すぎました。そのまま返されています',
       under: '弱すぎます。鏡に届いてもいません',
@@ -36,6 +42,8 @@
       perfect: '……ぴたりと、急所に。こんな手応えは初めてです',
     },
     hisame: {
+      web: '糸に祈りが絡んで、二度目が届きません',
+      sealed: '映し取られた気は、もう鏡を抜けません',
       sho: 'あら……祓うどころか、力を与えてしまいました',
       over: '力が過ぎて、鏡に返されてしまいました',
       under: '祈りが足りません。鏡に映るだけです',
@@ -74,7 +82,9 @@
       const ratio = r.final / stage.hp;
       // 威力が削がれた原因があれば、それを感じ取る
       let cause = null;
-      if (r.relation === 'sho') cause = L.sho;
+      if (r.sealed) cause = L.sealed;
+      else if (r.relation === 'sho') cause = L.sho;
+      else if (r.webbed) cause = L.web;
       else if (r.physMult < 1) cause = L.phys[stage.body] || L.phys.generic;
       else if (r.relation === 'same') cause = L.same;
       else if (r.armorApplied > 0 && r.armorApplied >= r.afterElem * 0.4) cause = L.armor;

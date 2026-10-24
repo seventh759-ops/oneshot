@@ -321,3 +321,4 @@ body.timestop #enemy-area { transform: scale(1.03); transition: transform 1.2s e
 .voice.v-win b { color: var(--kin); }
 .feel { margin-top: 2px; font-size: 12px; color: var(--muted); letter-spacing: .05em; }
 .modal-voice { margin: 8px 0 4px; color: var(--ink); font-size: 14px; }
+.react { margin-top: 6px; font-size: 12px; color: var(--kin); }

@@ -30,7 +30,7 @@
   const BODIES = {
     amorphous: { name: '不定形', desc: '打撃は半減', vs: { blunt: { mult: 0.5 } } },
     eyes: { name: '多眼', desc: '刺突は急所 ×2', vs: { thrust: { mult: 2 } } },
-    shell: { name: '甲殻', desc: '斬撃は装甲2倍／打撃は装甲を砕く', vs: { slash: { armor: 2 }, blunt: { armor: 0 } } },
+    shell: { name: '甲殻', desc: '斬撃・刺突は装甲2倍／打撃は装甲を砕く', vs: { slash: { armor: 2 }, thrust: { armor: 2 }, blunt: { armor: 0 } } },
     spirit: { name: '霊体', desc: '巫術以外は半減', vs: { slash: { mult: 0.5 }, blunt: { mult: 0.5 }, thrust: { mult: 0.5 } } },
     giant: { name: '巨体', desc: '巫術は半減', vs: { mystic: { mult: 0.5 } } },
     chimera: { name: '混成', desc: '斬撃・刺突は半減／打撃は装甲2倍', vs: { slash: { mult: 0.5 }, thrust: { mult: 0.5 }, blunt: { armor: 2 } } },
@@ -89,6 +89,7 @@
     echo: {
       name: '二の太刀', icon: '二', desc: '直前の型をもう一度繰り出す',
       apply(s, p, c) {
+        if (c.web) { s.webbed = true; return '糸に絡む'; }
         if (!c.prev || c.prev === 'echo') return '空振り';
         return '再：' + PARTS[c.prev].apply(s, p, { ...c, prev: c.prevPrev });
       },
@@ -121,6 +122,8 @@
   //   parts: 全員が使える型 / slots: 基本の枠数（剣士の特性で増減）
   //   unlock: クリアで増えるもの（表示用。実際に使える型は parts で決まる）
   //   look: 異形の描画パラメータ
+  //   trait: 敵の特性（web=糸で二の太刀を絡め取る / mirror=失敗した五行を映し取る /
+  //          rage=失敗するたびに装甲が増す / shift=挑むたびに五行が移ろう）
   const STAGES = [
     {
       id: 1, enemy: '一つ目泥坊主', hp: 14, armor: 0, element: 'water', body: 'amorphous',
@@ -137,31 +140,32 @@
       look: { body: 'tall', eyes: 9, seed: 11 },
     },
     {
-      id: 3, enemy: '土蜘蛛', hp: 14, armor: 10, element: 'earth', body: 'shell',
+      id: 3, enemy: '土蜘蛛', hp: 14, armor: 10, element: 'earth', body: 'shell', trait: 'web',
       slots: 4, parts: ['strike', 'hone', 'focus', 'zanshin', 'charge', 'pierce'],
       unlock: { parts: ['echo', 'flame'] },
-      hint: '分厚い甲殻。刃は滑り、金棒なら砕ける。火は土を生んでしまう。',
+      hint: '分厚い甲殻。刃は滑り、金棒なら砕ける。辺りに張られた糸が、繰り返す動きを絡め取る。',
       look: { body: 'spider', eyes: 6, seed: 23 },
     },
     {
-      id: 4, enemy: '雲外鏡', hp: 39, armor: 0, element: 'metal', body: 'spirit', exact: true,
+      id: 4, enemy: '雲外鏡', hp: 39, armor: 0, element: 'metal', body: 'spirit', exact: true, trait: 'mirror',
       slots: 4, parts: ['strike', 'hone', 'focus', 'zanshin', 'charge', 'pierce', 'echo', 'flame'],
       unlock: { parts: ['mine', 'gansai'] },
-      hint: '鏡の化生。実体が薄く、寸分違わぬ一太刀でなければ跳ね返す。',
+      hint: '鏡の化生。実体が薄く、寸分違わぬ一太刀でなければ跳ね返す。一度見せた気は、鏡に映し取られる。',
       look: { body: 'mirror', eyes: 2, seed: 37 },
     },
     {
-      id: 5, enemy: '氷喰らい', hp: 100, armor: 8, element: 'water', body: 'giant',
+      id: 5, enemy: '氷喰らい', hp: 100, armor: 8, element: 'water', body: 'giant', trait: 'rage', rageStep: 6,
       slots: 5, parts: ['strike', 'hone', 'focus', 'zanshin', 'charge', 'pierce', 'echo', 'flame', 'mine', 'gansai'],
       unlock: {},
-      hint: '凍てついた大口の異形。水は土に克たれる。金は水を生んでしまう。',
+      hint: '凍てついた大口の異形。仕損じるたびに怒り、身を覆う氷が厚くなる。',
       look: { body: 'maw', eyes: 4, seed: 51 },
     },
     {
-      id: 6, enemy: '鵺', hp: 228, armor: 12, element: 'fire', body: 'chimera', hidden: true,
+      id: 6, enemy: '鵺', hp: 120, armor: 12, element: 'fire', body: 'chimera', hidden: true, trait: 'shift',
+      shiftOrder: ['fire', 'water', 'wood', 'metal', 'earth'],
       slots: 5, parts: ['strike', 'hone', 'focus', 'zanshin', 'charge', 'pierce', 'echo', 'flame', 'mine', 'gansai'],
       unlock: {},
-      hint: '猿の顔、狸の胴、虎の手足、蛇の尾。正体の定まらぬ隠し幕の主。',
+      hint: '猿の顔、狸の胴、虎の手足、蛇の尾。正体が定まらず、挑むたびに気配が移ろう。',
       look: { body: 'nue', eyes: 2, seed: 67 },
     },
   ];
@@ -211,6 +215,15 @@
     return { chars, secrets, stages };
   }
 
+  // 敵の状態（その幕で何度仕損じたか、映し取られた五行）を反映したステージ
+  //   foe: { tries, sealed: [五行...] }
+  function foeStage(stage, foe = { tries: 0, sealed: [] }) {
+    const st = { ...stage, sealed: foe.sealed || [] };
+    if (stage.trait === 'rage') st.armor = stage.armor + stage.rageStep * foe.tries;
+    if (stage.trait === 'shift') st.element = stage.shiftOrder[foe.tries % stage.shiftOrder.length];
+    return st;
+  }
+
   // ある剣士がそのステージで使える型と枠数
   function loadout(stage, charKey, secrets) {
     const ch = CHARS[charKey];
@@ -234,7 +247,9 @@
     seq.forEach((key, i) => {
       const power = s.charges > 0 && key !== 'charge' ? 2 : 1;
       if (key !== 'charge' && s.charges > 0) s.charges--;
-      const note = PARTS[key].apply(s, power, { prev: seq[i - 1], prevPrev: seq[i - 2], last: i === seq.length - 1 });
+      const note = PARTS[key].apply(s, power, {
+        prev: seq[i - 1], prevPrev: seq[i - 2], last: i === seq.length - 1, web: stage.trait === 'web',
+      });
       steps.push({ key, note, dmg: s.dmg, charged: power > 1 });
     });
 
@@ -246,7 +261,9 @@
     dmg = Math.floor(dmg * physMult);
     const afterPhys = dmg;
     // 五行
-    const rel = elementRelation(s.element, stage.element);
+    // 雲外鏡に映し取られた五行は吸収される
+    const sealed = (stage.sealed || []).includes(s.element);
+    const rel = sealed ? { mult: 0, label: '映し身', kind: 'sealed' } : elementRelation(s.element, stage.element);
     dmg = Math.floor(dmg * rel.mult);
     const afterElem = dmg;
     // 装甲
@@ -264,13 +281,13 @@
       steps, raw, phys: s.phys, element: s.element,
       physMult, afterPhys, relation: rel.kind || null, relationLabel: rel.label, elemMult: rel.mult, afterElem,
       armorApplied, final: dmg, win, reflected, perfect,
-      critical: rel.kind === 'koku',
+      critical: rel.kind === 'koku', webbed: !!s.webbed, sealed,
     };
   }
 
   const api = {
     ELEMENTS, PHYS, BODIES, CHARS, CHAR_ORDER, PARTS, STAGES, TRIALS,
-    elementRelation, unlocked, loadout, simulate,
+    elementRelation, unlocked, loadout, foeStage, simulate,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OneShot = api;
