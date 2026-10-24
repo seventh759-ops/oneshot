@@ -186,6 +186,18 @@
     return { outcome: 'win', perfect: !!(enemy.perfect && enemy.perfect(a, n)), attack: a };
   }
 
+  // デバッグ用：全関門を最後まで評価して、一撃の性質と各関門の成否を返す
+  function explain(enemy, abilities) {
+    const a = buildAttack(abilities);
+    const n = abilities.filter(Boolean).length;
+    const gates = [
+      ...enemy.hit.map((g) => ({ phase: '当てる', clue: g.clue, pass: !!g.test(a) })),
+      ...enemy.kill.map((g) => ({ phase: '倒す', clue: g.clue, pass: !!g.test(a) })),
+    ];
+    const r = resolve(enemy, abilities);
+    return { attack: a, n, gates, outcome: r.outcome, perfect: !!r.perfect, perfectDefined: !!enemy.perfect };
+  }
+
   // これまで倒した敵から奪った能力を含め、使える能力
   function ownedAbilities(cleared) {
     const own = [...START_ABILITIES];
@@ -193,7 +205,7 @@
     return own;
   }
 
-  const api = { ABILITIES, START_ABILITIES, ENEMIES, buildAttack, resolve, ownedAbilities };
+  const api = { ABILITIES, START_ABILITIES, ENEMIES, buildAttack, resolve, explain, ownedAbilities };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Isekai = api;
 })(this);

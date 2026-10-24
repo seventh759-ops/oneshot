@@ -103,6 +103,39 @@ main {
 .ghost.small { padding: 4px 10px; font-size: 12px; }
 .ghost:disabled { opacity: .4; cursor: default; }
 
+/* 挑戦の記録 */
+#log-details summary { cursor: pointer; margin-bottom: 0; list-style: none; }
+#log-details summary::-webkit-details-marker { display: none; }
+#log-details summary::before { content: "▶ "; font-size: 11px; color: var(--muted); }
+#log-details[open] summary::before { content: "▼ "; }
+#log-details[open] summary { margin-bottom: 10px; }
+#logs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+#logs li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 8px; border-left: 3px solid var(--line-dim); background: var(--win-2); font-size: 13px; }
+#logs li small { grid-column: 1 / -1; font-family: var(--body); font-size: 12px; color: var(--muted); }
+#logs li .combo { min-width: 0; overflow-wrap: anywhere; }
+#logs li .res { white-space: nowrap; }
+#logs li.o-miss, #logs li.o-survive { border-left-color: var(--blood); }
+#logs li.o-miss .res, #logs li.o-survive .res { color: var(--blood); }
+#logs li.o-win { border-left-color: var(--line); }
+#logs li.o-perfect { border-left-color: var(--gold); }
+#logs li.o-perfect .res { color: var(--gold); }
+#logs li.empty { display: block; border: 0; background: none; padding: 0; color: var(--muted); font-family: var(--body); }
+#deja { margin: 10px 0 0; font-family: var(--body); font-size: 13px; color: var(--blood); }
+
+/* デバッグログ（確認用） */
+#debug {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #05070fee; border-top: 2px solid var(--line-dim);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 8px;
+}
+.debug-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.debug-tools { display: flex; gap: 6px; }
+#debug-count { color: var(--muted); }
+#debug-text {
+  width: 100%; height: 40vh; resize: vertical; background: #000; color: #b8f5c0; border: 1px solid var(--line-dim);
+  border-radius: 4px; padding: 8px; font: 12px/1.6 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
 /* 演出 */
 #flash { position: fixed; inset: 0; z-index: 30; background: #fff; pointer-events: none; animation: flash .35s forwards; }
 @keyframes flash { from { opacity: 1; } to { opacity: 0; } }

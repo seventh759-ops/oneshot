@@ -1,5 +1,5 @@
 (function () {
-  const { ABILITIES, ENEMIES, resolve, ownedAbilities } = window.Isekai;
+  const { ABILITIES, ENEMIES, resolve, explain, ownedAbilities } = window.Isekai;
   const { drawSprite } = window.Sprites;
   const Sound = window.Sound;
   const $ = (id) => document.getElementById(id);
@@ -7,7 +7,7 @@
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? ms * 0.3 : ms));
 
-  // 進行状況：倒した敵 / 極を出した敵 / 死んだ回数 / 敵ごとの死に帳 / プロローグを見たか
+  // 進行状況：倒した敵 / 極を出した敵 / 死んだ回数 / 敵ごとの死に帳 / 敵ごとの挑戦の記録 / プロローグを見たか
   let save = load();
   let enemyId = firstUndefeated();
   let build = [];
@@ -15,7 +15,7 @@
   let pixels = [];
 
   function load() {
-    const empty = { cleared: [], perfects: [], deaths: 0, notes: {}, prologue: false };
+    const empty = { cleared: [], perfects: [], deaths: 0, notes: {}, logs: {}, prologue: false };
     let data;
     try { data = { ...empty, ...JSON.parse(localStorage.getItem(SAVE_KEY)) }; } catch { return empty; }
     // 書き直した手がかりは、古い文言を新しい文言に置き換える
@@ -31,7 +31,51 @@
     return e ? e.id : ENEMIES[ENEMIES.length - 1].id;
   }
   const enemy = () => ENEMIES.find((e) => e.id === enemyId);
+
+  // 挑戦の記録：込めた能力の組み合わせ（順不同）ごとに、結果と回数を残す
+  const comboKey = (abs) => abs.filter(Boolean).sort().join('+');
+  const comboName = (key) => (key ? key.split('+').map((k) => `《${ABILITIES[k].name}》`).join('') : '（何も込めず）');
+  const OUTCOME = { win: '倒した', perfect: '極', miss: '外した', survive: '倒しきれなかった' };
+  function logAttempt(e, r) {
+    const logs = (save.logs[e.id] ||= []);
+    const key = comboKey(build);
+    const outcome = r.outcome === 'win' && r.perfect ? 'perfect' : r.outcome;
+    const old = logs.find((l) => l.key === key);
+    if (old) { old.count++; old.at = Date.now(); }
+    else logs.push({ key, outcome, clue: r.gate ? r.gate.clue : null, count: 1, at: Date.now() });
+  }
+  const pastAttempt = () => (save.logs[enemyId] || []).find((l) => l.key === comboKey(build));
   const enemyOpen = (e) => e.id === 1 || save.cleared.includes(e.id - 1);
+
+  // ── デバッグログ（確認用）：一撃ごとの判定の中身を残す ──
+  const DEBUG_KEY = 'isekai-debug-log';
+  let debugLog = [];
+  try { debugLog = JSON.parse(localStorage.getItem(DEBUG_KEY)) || []; } catch { debugLog = []; }
+  const ATTACK_LABELS = {
+    magic: '魔法', element: '属性', might: '怪力を込めた', smash: '怪力が乗った', ranged: '遠当て',
+    pierce: '貫通', split: '分裂', phase: 'すり抜け', wing: '飛翔', gale: '疾風',
+  };
+  function debugRecord(e, abilities) {
+    const x = explain(e, abilities);
+    const t = new Date();
+    const props = Object.entries(x.attack)
+      .filter(([, v]) => v)
+      .map(([k, v]) => (k === 'element' ? `属性=${{ fire: '炎', ice: '氷', void: '打ち消し合って無し' }[v] || v}` : ATTACK_LABELS[k] || k));
+    const lines = [
+      `[${t.toLocaleTimeString()}] ${e.id}.${e.name}  込めた能力(${x.n}): ${abilities.filter(Boolean).map((k) => ABILITIES[k].name).join('・') || 'なし'}`,
+      `  一撃の性質: ${props.join(' / ') || '（ただの物理の一撃）'}`,
+      ...x.gates.map((g) => `  ${g.pass ? '○' : '×'} ${g.phase}：${g.clue}`),
+      `  結果: ${{ win: '撃破', miss: '外した（死亡）', survive: '倒しきれず（死亡）' }[x.outcome]}${x.outcome === 'win' ? (x.perfect ? '（極）' : x.perfectDefined ? '（極ではない）' : '（この敵に極なし）') : ''}`,
+    ];
+    debugLog.unshift(lines.join('\n'));
+    debugLog = debugLog.slice(0, 200);
+    try { localStorage.setItem(DEBUG_KEY, JSON.stringify(debugLog)); } catch { /* 保存できなくても続行 */ }
+    renderDebug();
+  }
+  function renderDebug() {
+    $('debug-text').value = debugLog.join('\n\n') || '（まだ記録なし）';
+    $('debug-count').textContent = `${debugLog.length}件`;
+  }
 
   function loadEnemy(id) {
     enemyId = id;
@@ -72,6 +116,15 @@
       ? notes.map((n) => `<li>${n}</li>`).join('')
       : '<li class="empty">まだ何も知らない。……死んで覚えるしかない。</li>';
 
+    // 挑戦の記録（新しい順）
+    const logs = [...(save.logs[e.id] || [])].sort((a, b) => b.at - a.at);
+    $('log-count').textContent = logs.length ? `${logs.length}通り` : '';
+    $('logs').innerHTML = logs.length
+      ? logs.map((l) => `<li class="o-${l.outcome}"><span class="combo">${comboName(l.key)}</span>`
+        + `<span class="res">${OUTCOME[l.outcome]}${l.count > 1 ? `（${l.count}回）` : ''}</span>`
+        + (l.clue ? `<small>${l.clue}</small>` : '') + '</li>').join('')
+      : '<li class="empty">まだ一度も挑んでいない。</li>';
+
     $('slots').innerHTML = '';
     build.forEach((k, i) => {
       const el = document.createElement('button');
@@ -95,6 +148,11 @@
       $('abilities').appendChild(b);
     });
 
+    // いま組んでいる組み合わせを、前に試していたら知らせる
+    const past = build.some(Boolean) && pastAttempt();
+    $('deja').hidden = !past || busy;
+    if (past) $('deja').textContent = `この組み合わせは前に試した → ${OUTCOME[past.outcome]}${past.clue ? `：${past.clue}` : ''}`;
+
     $('attack-btn').disabled = busy;
     $('reset-btn').disabled = busy;
   }
@@ -104,6 +162,9 @@
     if (busy) return;
     const e = enemy();
     const r = resolve(e, build);
+    logAttempt(e, r);
+    debugRecord(e, build);
+    persist();
     busy = true;
     render();
     $('enemy-win').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
@@ -255,6 +316,20 @@
     $('prologue').hidden = false;
   }
 
+  $('debug-btn').onclick = () => { $('debug').hidden = !$('debug').hidden; renderDebug(); };
+  $('debug-close').onclick = () => { $('debug').hidden = true; };
+  $('debug-copy').onclick = () => {
+    const ta = $('debug-text');
+    const done = () => { $('debug-copy').textContent = 'コピーした'; setTimeout(() => { $('debug-copy').textContent = 'コピー'; }, 1500); };
+    // クリップボードが使えない環境では、全文を選択して手でコピーしてもらう
+    const fallback = () => { ta.focus(); ta.select(); $('debug-copy').textContent = '選択した（手でコピー）'; };
+    try { navigator.clipboard.writeText(ta.value).then(done, fallback); } catch { fallback(); }
+  };
+  $('debug-clear').onclick = () => {
+    debugLog = [];
+    try { localStorage.removeItem(DEBUG_KEY); } catch { /* 続行 */ }
+    renderDebug();
+  };
   $('attack-btn').onclick = attack;
   $('reset-btn').onclick = () => { build = build.map(() => null); Sound.play('remove'); render(); };
   $('revive-btn').onclick = revive;

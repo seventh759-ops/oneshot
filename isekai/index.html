@@ -14,6 +14,7 @@
   <div class="header-tools">
     <span id="death-count"></span>
     <button id="mute-btn" class="ghost small" type="button"></button>
+    <button id="debug-btn" class="ghost small" type="button">ログ</button>
   </div>
 </header>
 
@@ -33,9 +34,17 @@
     <ul id="notes"></ul>
   </section>
 
+  <section class="win" id="log-win">
+    <details id="log-details" open>
+      <summary class="win-title">挑戦の記録 <span class="sub" id="log-count"></span></summary>
+      <ul id="logs"></ul>
+    </details>
+  </section>
+
   <section class="win" id="build-win">
     <div class="win-title">一撃に込める能力 <span class="sub">枠に触れると外す</span></div>
     <div id="slots"></div>
+    <p id="deja" hidden></p>
     <div id="abilities"></div>
     <div class="actions">
       <button id="reset-btn" class="ghost" type="button">外す</button>
@@ -43,6 +52,18 @@
     </div>
   </section>
 </main>
+
+<div id="debug" hidden>
+  <div class="debug-head">
+    <span>デバッグログ <span id="debug-count"></span></span>
+    <span class="debug-tools">
+      <button id="debug-copy" class="ghost small" type="button">コピー</button>
+      <button id="debug-clear" class="ghost small" type="button">消去</button>
+      <button id="debug-close" class="ghost small" type="button">閉じる</button>
+    </span>
+  </div>
+  <textarea id="debug-text" readonly spellcheck="false" aria-label="デバッグログ"></textarea>
+</div>
 
 <div id="flash" hidden></div>
 
