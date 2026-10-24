@@ -1,7 +1,9 @@
 (function () {
   const { PARTS, STAGES, simulate } = window.OneShot;
+  const Sound = window.Sound;
   const $ = (id) => document.getElementById(id);
   const SAVE_KEY = 'oneshot-progress-v1';
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let cleared = loadProgress();
   let stageIdx = Math.min(cleared.length, STAGES.length - 1);
@@ -17,16 +19,70 @@
   }
 
   const stage = () => STAGES[stageIdx];
+  const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? ms * 0.4 : ms));
+
+  // 0〜9999 を漢数字に
+  function kanjiNum(n) {
+    if (n === 0) return '零';
+    const d = '〇一二三四五六七八九';
+    const units = [['千', 1000], ['百', 100], ['十', 10]];
+    let out = '';
+    for (const [u, v] of units) {
+      const q = Math.floor(n / v);
+      if (q) out += (q > 1 ? d[q] : '') + u;
+      n %= v;
+    }
+    return out + (n ? d[n] : '');
+  }
+
+  // 円相（筆で描いた輪）をステージごとに少し違う形で描く
+  function drawEnso(seed) {
+    const cv = $('enso');
+    const c = cv.getContext('2d');
+    const W = cv.width;
+    c.clearRect(0, 0, W, W);
+    let s = seed * 9301 + 49297;
+    const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+    const start = rnd() * Math.PI * 2;
+    const sweep = Math.PI * (1.7 + rnd() * 0.2);
+    const R = W * 0.4;
+    const N = 220;
+    c.fillStyle = '#1b1815';
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      const a = start + sweep * t;
+      const wobble = Math.sin(t * 7 + seed) * 3;
+      const r = R + wobble;
+      // 入りは太く、抜けは細くかすれる
+      const w = 18 * Math.pow(1 - t, 0.6) * (0.85 + rnd() * 0.3) + 1.5;
+      c.globalAlpha = t > 0.75 ? 0.5 + rnd() * 0.4 : 0.9;
+      c.beginPath();
+      c.arc(W / 2 + Math.cos(a) * r, W / 2 + Math.sin(a) * r, w, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+  }
 
   function loadStage(i) {
     stageIdx = i;
     build = Array(stage().slots).fill(null);
     attempts = 0;
     busy = false;
-    $('enemy-sprite').className = '';
+    resetEnemyView();
+    drawEnso(stage().id);
     $('log').innerHTML = '';
     render();
   }
+
+  function resetEnemyView() {
+    $('enemy-sprite').className = '';
+    $('enemy-cut').className = '';
+    $('stamp').className = '';
+    $('damage-pop').className = '';
+    $('enso').style.opacity = '';
+  }
+
+  const seal = (key) => `<span class="seal">${PARTS[key].icon}</span>`;
 
   function render() {
     const st = stage();
@@ -34,7 +90,9 @@
     $('stage-nav').innerHTML = '';
     STAGES.forEach((s, i) => {
       const b = document.createElement('button');
-      b.textContent = s.id;
+      b.type = 'button';
+      b.textContent = kanjiNum(s.id);
+      b.title = `第${kanjiNum(s.id)}幕 ${s.enemy}`;
       if (cleared.includes(s.id)) b.classList.add('cleared');
       if (i === stageIdx) b.classList.add('current');
       b.disabled = i > cleared.length || busy;
@@ -42,13 +100,13 @@
       $('stage-nav').appendChild(b);
     });
 
-    $('enemy-name').textContent = `STAGE ${st.id} — ${st.enemy}`;
-    $('enemy-sprite').textContent = st.sprite;
-    const tags = [`<span class="tag hp">HP ${st.hp}</span>`];
+    $('enemy-name').innerHTML = `第${kanjiNum(st.id)}幕<b>${st.enemy}</b>`;
+    document.querySelectorAll('.half').forEach((h) => { h.textContent = st.sprite; });
+    const tags = [`<span class="tag hp">体力 ${st.hp}</span>`];
     if (st.armor) tags.push(`<span class="tag">装甲 ${st.armor}</span>`);
-    if (st.exact) tags.push('<span class="tag special">反射：ぴったりのみ有効</span>');
+    if (st.exact) tags.push('<span class="tag special">反射：寸分違わず</span>');
     if (st.weakFlame) tags.push('<span class="tag special">弱点：炎（会心×3）</span>');
-    tags.push(`<span class="tag">挑戦 ${attempts + 1} 回目</span>`);
+    tags.push(`<span class="tag">${kanjiNum(attempts + 1)}太刀目</span>`);
     $('enemy-stats').innerHTML = tags.join('');
     $('hint').textContent = st.hint;
 
@@ -56,11 +114,13 @@
     build.forEach((key, i) => {
       const el = document.createElement('div');
       el.className = 'slot' + (key ? ' filled' : '');
-      el.dataset.i = i;
-      el.innerHTML = `<span class="idx">${i + 1}</span>` + (key
-        ? `<span class="part-icon">${PARTS[key].icon}</span><span class="part-name">${PARTS[key].name}</span><span class="val"></span>`
-        : '<span class="part-desc" style="color:var(--muted);font-size:12px">空き</span>');
-      el.onclick = () => { if (!busy && key) { build[i] = null; render(); } };
+      el.tabIndex = key && !busy ? 0 : -1;
+      el.innerHTML = `<span class="idx">${kanjiNum(i + 1)}</span>` + (key
+        ? `${seal(key)}<span class="part-name">${PARTS[key].name}</span><span class="val"></span>`
+        : '<span class="empty">空き</span>');
+      const remove = () => { if (!busy && key) { build[i] = null; Sound.play('remove'); render(); } };
+      el.onclick = remove;
+      el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); remove(); } };
       $('slots').appendChild(el);
     });
 
@@ -69,92 +129,129 @@
     st.parts.forEach((key) => {
       const p = PARTS[key];
       const b = document.createElement('button');
+      b.type = 'button';
       b.className = 'part' + (key === newPart ? ' new' : '');
-      b.innerHTML = `<span class="part-icon">${p.icon}</span><span class="part-name">${p.name}${key === newPart ? ' <small style="color:var(--ok)">NEW</small>' : ''}</span><span class="part-desc">${p.desc}</span>`;
+      b.innerHTML = `${seal(key)}<span class="part-name">${p.name}${key === newPart ? '<span class="new-mark">新たに会得</span>' : ''}</span><span class="part-desc">${p.desc}</span>`;
       b.disabled = busy || build.includes(key) || !build.includes(null);
       b.onclick = () => {
         const empty = build.indexOf(null);
-        if (empty >= 0) { build[empty] = key; render(); }
+        if (empty >= 0) { build[empty] = key; Sound.play('place'); render(); }
       };
       $('parts').appendChild(b);
     });
 
     $('attack-btn').disabled = busy || build.every((k) => !k);
     $('reset-btn').disabled = busy;
+    $('mute-btn').textContent = Sound.muted ? '音：無' : '音：有';
   }
 
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  function breakdown(st, r) {
+    const parts = [`威力 <b>${r.raw}</b>`];
+    if (r.critical) parts.push('会心 <b>×3</b>');
+    if (st.armor) parts.push(r.pierce ? '装甲 <b>貫通</b>' : `装甲 <b>−${r.armorApplied}</b>`);
+    parts.push(`最終 <b>${r.final}</b>／体力 ${st.hp}`);
+    let verdict;
+    if (r.win) verdict = '<span class="win">一刀両断。</span>';
+    else if (r.reflected) verdict = `<span class="lose">弾かれた。${r.final > st.hp ? '強すぎる' : '弱すぎる'}一太刀。</span>`;
+    else verdict = `<span class="lose">浅い。あと ${st.hp - r.final}。</span>`;
+    return parts.join(' → ') + '<br>' + verdict;
+  }
 
   async function attack() {
     if (busy) return;
+    Sound.unlock();
     const st = stage();
     const r = simulate(st, build);
     busy = true;
     render();
     $('log').innerHTML = '';
+    // 敵と構えが同時に見える位置へ
+    $('enemy-area').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    await wait(250);
 
-    // 各スロットを順に光らせて途中経過を見せる
+    // 一. 構え：型を一つずつ繰り出す
     const slotEls = [...document.querySelectorAll('.slot')];
     let si = 0;
     for (let i = 0; i < build.length; i++) {
       if (!build[i]) continue;
-      const step = r.steps[si++];
+      const step = r.steps[si];
       const el = slotEls[i];
       el.classList.add('active');
-      el.querySelector('.val').textContent = `${step.note}${step.charged ? '（溜め）' : ''} → ${step.dmg}`;
-      await wait(420);
+      el.querySelector('.val').textContent = `${step.note}${step.charged ? '（溜）' : ''} → ${step.dmg}`;
+      Sound.play('step', si);
+      si++;
+      await wait(380);
       el.classList.remove('active');
     }
+    await wait(200);
 
-    // 着弾
-    const pop = $('damage-pop');
-    pop.className = '';
-    void pop.offsetWidth;
-    pop.textContent = (r.critical ? 'CRITICAL! ' : '') + r.final;
-    pop.classList.add('show');
-    if (r.critical) pop.classList.add('crit');
+    // 二. カットイン
+    const cutin = $('cutin');
+    cutin.querySelector('.cutin-sub').textContent = `${st.enemy}、斬る`;
+    cutin.hidden = false;
+    cutin.classList.remove('on');
+    void cutin.offsetWidth;
+    cutin.classList.add('on');
+    Sound.play('cutin');
+    await wait(820);
 
+    // 三. 暗転 → 一閃
+    const bo = $('blackout');
+    bo.className = '';
+    bo.hidden = false;
+    cutin.hidden = true;
+    await wait(450);
+    bo.classList.add('slash');
+    Sound.play('slash');
+    await wait(420);
+
+    // 四. 結果：明けると決着がついている
     const sprite = $('enemy-sprite');
-    sprite.className = r.win ? 'dead' : (r.reflected ? 'reflect' : 'shake');
+    if (r.win) { sprite.classList.add('split'); $('enemy-cut').classList.add('on'); $('enso').style.opacity = '.3'; }
+    else sprite.classList.add(r.reflected ? 'reflect' : 'shake');
+    const pop = $('damage-pop');
+    pop.innerHTML = `${r.critical ? '会心 ' : ''}${kanjiNum(r.final)}<small>${r.final}</small>`;
+    pop.className = r.critical ? 'crit' : '';
+    void pop.offsetWidth;
+    pop.classList.add('show');
+    const stamp = $('stamp');
+    stamp.textContent = r.win ? '撃破' : r.reflected ? '反射' : '浅し';
+    stamp.classList.add('on');
+    Sound.play(r.win ? 'win' : r.reflected ? 'reflect' : 'fail');
+    bo.classList.add('fade');
+    $('log').innerHTML = breakdown(st, r);
+    await wait(260);
+    bo.hidden = true;
 
-    const parts = [`威力 <b>${r.raw}</b>`];
-    if (r.critical) parts.push('会心 <b>×3</b>');
-    if (st.armor) parts.push(r.pierce ? '装甲 <b>無視</b>' : `装甲 <b>−${r.armorApplied}</b>`);
-    parts.push(`最終 <b>${r.final}</b> / HP ${st.hp}`);
-    let verdict;
-    if (r.win) verdict = '<span class="win">撃破！</span>';
-    else if (r.reflected) verdict = `<span class="lose">反射された…（${r.final > st.hp ? '強すぎ' : '弱すぎ'}）</span>`;
-    else verdict = `<span class="lose">倒しきれない…（あと ${st.hp - r.final}）</span>`;
-    $('log').innerHTML = parts.join(' → ') + '<br>' + verdict;
-
-    await wait(1100);
+    await wait(1500);
 
     if (r.win) {
       if (!cleared.includes(st.id)) { cleared.push(st.id); saveProgress(); }
       showClear(st);
     } else {
-      // 失敗：ビルドはそのまま残して即リトライ可能
+      // 失敗：構えはそのまま残して、すぐ次の一太刀へ
       attempts++;
       busy = false;
-      sprite.className = '';
+      resetEnemyView();
       render();
-      $('log').innerHTML = parts.join(' → ') + '<br>' + verdict;
+      $('log').innerHTML = breakdown(st, r);
     }
   }
 
   function showClear(st) {
-    const rank = attempts === 0 ? '★★★ 一発クリア！' : attempts <= 2 ? '★★☆' : '★☆☆';
-    $('modal-title').textContent = 'STAGE CLEAR';
-    let body = `${rank}<br>挑戦回数：${attempts + 1}`;
+    const rank = attempts === 0 ? '免許皆伝' : attempts <= 2 ? '目録' : '修行中';
     const last = stageIdx === STAGES.length - 1;
+    $('modal-title').textContent = '一刀両断';
+    let body = `<span class="rank">${rank}</span><br>${kanjiNum(attempts + 1)}太刀で斬った`;
     if (st.unlock) {
       const p = PARTS[st.unlock];
-      body += `<br><span class="unlock">新パーツ解放：${p.icon} <b>${p.name}</b><br><small>${p.desc}</small></span>`;
+      body += `<div class="unlock">${seal(st.unlock)}<b>新たな型：${p.name}</b><small>${p.desc}</small></div>`;
     }
-    if (last) body += '<br><br>試作版はここまで。遊んでくれてありがとう！';
+    if (last) body += '<br>試作版はここまで。遊んでくれてありがとう。';
     $('modal-body').innerHTML = body;
-    $('modal-btn').textContent = last ? 'ステージ選択へ' : '次のステージへ';
+    $('modal-btn').textContent = last ? '幕を選ぶ' : '次の幕へ';
     $('modal').hidden = false;
+    Sound.play('clear');
     $('modal-btn').onclick = () => {
       $('modal').hidden = true;
       loadStage(last ? stageIdx : stageIdx + 1);
@@ -162,7 +259,13 @@
   }
 
   $('attack-btn').onclick = attack;
-  $('reset-btn').onclick = () => { build = Array(stage().slots).fill(null); $('log').innerHTML = ''; render(); };
+  $('reset-btn').onclick = () => {
+    build = Array(stage().slots).fill(null);
+    $('log').innerHTML = '';
+    Sound.play('remove');
+    render();
+  };
+  $('mute-btn').onclick = () => { Sound.toggle(); Sound.play('place'); render(); };
 
   loadStage(stageIdx);
 })();
