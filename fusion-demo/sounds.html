@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>属性の音・試聴</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* レイアウト：属性ごとのカードを並べた試聴盤。カードは色の帯・名前・音の説明・2つの再生ボタン */
+:root {
+  color-scheme: dark;
+  --void: #07060c;
+  --panel: #110f1a;
+  --line: #2b2740;
+  --text: #ece8f6;
+  --muted: #8e88a8;
+  --mincho: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --gothic: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--void); color: var(--text); font-family: var(--gothic); }
+button { font: inherit; }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+main {
+  max-width: 900px; margin: 0 auto; display: grid; gap: 18px;
+  padding-block: 20px 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header { display: grid; gap: 6px; }
+h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; letter-spacing: .08em; }
+header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; max-width: 60ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); }
+.bar input { accent-color: #9b7bff; }
+.bar button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 12px 12px 12px 16px; display: grid; gap: 8px; position: relative; overflow: hidden; min-width: 0;
+}
+.card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--c); }
+.card.playing { border-color: var(--c); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 40%, transparent); }
+.name { display: flex; align-items: baseline; gap: 8px; }
+.name b { font-family: var(--mincho); font-size: 22px; color: var(--c); }
+.name span { font-size: 11px; color: var(--muted); }
+.desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; }
+.btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.btns button { flex: 1; min-width: 0; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 4px; padding: 7px 6px; cursor: pointer; font-size: 12px; }
+.btns button:hover { border-color: var(--c); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>属性の音・試聴</h1>
+    <p>フュージョンスキルの属性ごとの音。「属性だけ」はその音のみ、「放つ音と」は刃の一撃に重ねたとき（実際の演出で鳴る形）。イヤホン推奨。</p>
+  </header>
+  <div class="bar">
+    <label for="vol">音量</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.7">
+    <button id="strike-only" type="button">放つ音だけ</button>
+    <button id="stop" type="button">止める</button>
+  </div>
+  <div id="grid"></div>
+</main>
+
+<script>
+// ── 音の部品（Web Audio で合成） ──
+let ctx = null, master = null, verb = null, bus = null;
+function ensure() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    bus = ctx.createGain();
+    master = ctx.createGain(); master.gain.value = Number(document.getElementById('vol').value);
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
+    bus.connect(master); master.connect(comp); comp.connect(ctx.destination);
+    // 長い残響（減衰するノイズをインパルスにする）
+    const len = ctx.sampleRate * 3.4, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8); }
+    verb = ctx.createConvolver(); verb.buffer = ir;
+    const wet = ctx.createGain(); wet.gain.value = 0.5; verb.connect(wet); wet.connect(bus);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+// 出口：そのまま＋残響へ。pan で左右に振る
+function out(node, send = 0.4, pan = 0) {
+  let n = node;
+  if (pan) { const p = ctx.createStereoPanner(); p.pan.value = pan; node.connect(p); n = p; }
+  n.connect(bus);
+  if (send) { const g = ctx.createGain(); g.gain.value = send; n.connect(g); g.connect(verb); }
+}
+function env(t, a, peak, d, hold = 0) {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+  if (hold) g.gain.setValueAtTime(peak, t + a + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + a + hold + d);
+  return g;
+}
+function tone(type, f, t, a, peak, d, f2, send = 0.3, pan = 0) {
+  const o = ctx.createOscillator(), g = env(t, a, peak, d);
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + a + d);
+  o.connect(g); out(g, send, pan); o.start(t); o.stop(t + a + d + 0.05);
+  o.env = g; // 音量の山を付けた後の音（こだまなどに分けるとき用）
+  return o;
+}
+let noiseBuf = null;
+function noiseSrc() {
+  if (!noiseBuf) {
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s;
+}
+// フィルターを通したノイズ。a=立ち上がり、d=減衰、f0→f1 へ周波数を動かす
+function noise(t, a, peak, d, type, f0, f1, q = 1, send = 0.3, pan = 0) {
+  const s = noiseSrc(), f = ctx.createBiquadFilter(), g = env(t, a, peak, d);
+  f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + a + d);
+  s.connect(f); f.connect(g); out(g, send, pan); s.start(t); s.stop(t + a + d + 0.05);
+  return f;
+}
+// 金属・ガラスの響き：倍音が整数倍にならない正弦波の束
+function metal(t, base, ratios, d, peak, send = 0.6, pan = 0) {
+  ratios.forEach((r, i) => [-3, 3].forEach((det) => {
+    const o = ctx.createOscillator(), dd = d * (1 - i * 0.07), g = env(t, 0.003, peak / (i + 1), dd);
+    o.frequency.value = base * r; o.detune.value = det; o.connect(g); out(g, send, pan); o.start(t); o.stop(t + dd + 0.05);
+  }));
+}
+// 歪ませた低音
+function boom(t, f0, f1, d, peak) {
+  const o = ctx.createOscillator(), sh = ctx.createWaveShaper(), g = env(t, 0.004, peak, d);
+  const c = new Float32Array(256); for (let i = 0; i < 256; i++) c[i] = Math.tanh((i / 128 - 1) * 3); sh.curve = c;
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + d);
+  o.connect(sh); sh.connect(g); out(g, 0.2); o.start(t); o.stop(t + d + 0.05);
+}
+// 細かく弾ける音を散らす
+function crackle(t, span, n, f, peak, pan = 0.6) {
+  for (let i = 0; i < n; i++) noise(t + Math.random() * span, 0.001, peak * (0.3 + Math.random() * 0.7), 0.015 + Math.random() * 0.03, 'bandpass', f, f * 0.8, 2, 0.2, (Math.random() * 2 - 1) * pan);
+}
+// こだま（遅延の繰り返し）
+function echo(node, time, fb, send = 0.4) {
+  const d = ctx.createDelay(2), g = ctx.createGain(); d.delayTime.value = time; g.gain.value = fb;
+  node.connect(d); d.connect(g); g.connect(d); out(d, send);
+}
+
+// ── 刃の一撃（演出の「放つ瞬間」） ──
+function strike(t) {
+  noise(t, 0.001, 0.9, 0.012, 'highpass', 6000, 9000);
+  noise(t, 0.002, 1.0, 0.14, 'bandpass', 9000, 1800, 1.2);
+  metal(t + 0.01, 1580, [2, 2.76, 3.52, 4.31, 5.4], 1.8, 0.16, 0.7);
+  tone('sine', 5200, t + 0.01, 0.002, 0.05, 0.9, 4800);
+  boom(t, 90, 38, 0.45, 0.55);
+}
+
+// ── 属性ごとの音 ──
+const ELEMENTS = [
+  {
+    key: 'fire', name: '炎', col: '#ff6a2b', members: '紅蓮・爆',
+    desc: 'ボウッと点火し、炎がうなりながら揺らぎ、火の粉がパチパチはぜる。',
+    play(t) {
+      noise(t, 0.12, 0.7, 0.5, 'lowpass', 200, 1400, 0.7, 0.3);            // 点火のボウッ
+      const f = noise(t + 0.08, 0.3, 0.45, 1.6, 'bandpass', 500, 260, 0.8, 0.4); // うなり
+      const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 7; lg.gain.value = 180;
+      l.connect(lg); lg.connect(f.frequency); l.start(t); l.stop(t + 2.2);       // 揺らぎ
+      crackle(t + 0.15, 1.6, 40, 3200, 0.35);
+      tone('sine', 55, t, 0.05, 0.35, 1.2, 40, 0.1);
+    },
+  },
+  {
+    key: 'ice', name: '氷', col: '#9fe8ff', members: '氷華',
+    desc: 'ピキピキと凍りつく音が詰まっていき、澄んだ氷の鈴が鳴って、最後にパリンと砕ける。',
+    play(t) {
+      for (let i = 0; i < 24; i++) { const tt = t + Math.pow(i / 24, 0.6) * 0.7; noise(tt, 0.001, 0.25, 0.02, 'highpass', 7000, 9000, 1, 0.3, Math.random() - 0.5); }
+      metal(t + 0.5, 1046, [2, 2.52, 3.17, 4.11, 5.03], 2.2, 0.08, 0.9, -0.2);
+      metal(t + 0.62, 1318, [2, 2.52, 3.17, 4.11], 2.0, 0.06, 0.9, 0.2);
+      noise(t + 0.85, 0.002, 0.7, 0.25, 'highpass', 3000, 7000, 0.8, 0.5);
+      for (let i = 0; i < 14; i++) tone('sine', 3000 + Math.random() * 4000, t + 0.88 + Math.random() * 0.5, 0.002, 0.04, 0.3, 0, 0.6, Math.random() * 2 - 1);
+    },
+  },
+  {
+    key: 'thunder', name: '雷', col: '#ffe14a', members: '雷霆',
+    desc: 'バチッという放電、ジジジと唸る電気、少し遅れて遠くから雷鳴が転がってくる。',
+    play(t) {
+      noise(t, 0.001, 1.0, 0.03, 'highpass', 2000, 4000);
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = env(t, 0.005, 0.12, 0.5, 0.1);
+      o.type = 'sawtooth'; o.frequency.value = 60; f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 3;
+      const am = ctx.createOscillator(), ag = ctx.createGain(); am.type = 'square'; am.frequency.value = 23; ag.gain.value = 0.08;
+      am.connect(ag); ag.connect(g.gain); o.connect(f); f.connect(g); out(g, 0.2);
+      o.start(t); o.stop(t + 0.7); am.start(t); am.stop(t + 0.7);
+      crackle(t, 0.5, 30, 4500, 0.4);
+      const r = noise(t + 0.35, 0.5, 0.55, 2.6, 'lowpass', 300, 70, 0.7, 0.5);
+      const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 3; lg.gain.value = 120;
+      l.connect(lg); lg.connect(r.frequency); l.start(t); l.stop(t + 3.6);
+    },
+  },
+  {
+    key: 'water', name: '水', col: '#3aa0ff', members: '蒼流',
+    desc: 'ザバッと水が跳ね、ゴボゴボと泡が昇り、さざ波の流れが残る。',
+    play(t) {
+      noise(t, 0.01, 1.4, 0.45, 'bandpass', 2500, 400, 0.9, 0.4);
+      for (let i = 0; i < 18; i++) { const f = 300 + Math.random() * 700; tone('sine', f, t + 0.15 + Math.random() * 1.1, 0.004, 0.12, 0.06, f * 2.2, 0.4, Math.random() * 1.4 - 0.7); }
+      const w = noise(t + 0.2, 0.4, 0.25, 1.6, 'lowpass', 900, 500, 1, 0.5);
+      const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 1.5; lg.gain.value = 300;
+      l.connect(lg); lg.connect(w.frequency); l.start(t); l.stop(t + 2.3);
+    },
+  },
+  {
+    key: 'wind', name: '風', col: '#b8ffd8', members: '疾風',
+    desc: '左から右へ突風が吹き抜け、細い風鳴りの口笛が尾を引く。',
+    play(t) {
+      const s = noiseSrc(), f = ctx.createBiquadFilter(), g = env(t, 0.25, 2.2, 1.2), p = ctx.createStereoPanner();
+      f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.5); f.frequency.exponentialRampToValueAtTime(600, t + 1.45);
+      p.pan.setValueAtTime(-0.9, t); p.pan.linearRampToValueAtTime(0.9, t + 1.4);
+      s.connect(f); f.connect(g); g.connect(p); out(p, 0.4); s.start(t); s.stop(t + 1.5);
+      const o = tone('sine', 1800, t + 0.3, 0.2, 0.06, 1.2, 1300, 0.6);
+      const v = ctx.createOscillator(), vg = ctx.createGain(); v.frequency.value = 6; vg.gain.value = 30; v.connect(vg); vg.connect(o.frequency); v.start(t); v.stop(t + 1.8);
+    },
+  },
+  {
+    key: 'earth', name: '土', col: '#c29a6b', members: '岩砕・重星',
+    desc: '地の底から地鳴りがせり上がり、ドンと岩が砕け、ガラガラと破片が転がる。',
+    play(t) {
+      noise(t, 0.4, 0.6, 1.2, 'lowpass', 120, 60, 0.7, 0.2);
+      boom(t + 0.35, 60, 28, 1.8, 0.7);
+      noise(t + 0.35, 0.002, 0.8, 0.3, 'bandpass', 900, 300, 1, 0.3);
+      for (let i = 0; i < 20; i++) noise(t + 0.45 + Math.random() * 1.0, 0.002, 0.25, 0.05 + Math.random() * 0.08, 'bandpass', 400 + Math.random() * 900, 200, 2, 0.3, Math.random() * 1.2 - 0.6);
+    },
+  },
+  {
+    key: 'light', name: '光', col: '#fff3b0', members: '聖光',
+    desc: '高い倍音がふわっと満ちていき、澄んだ鐘の和音がきらめいて広がる。',
+    play(t) {
+      [1047, 1319, 1568, 2093, 2637].forEach((f, i) => tone('sine', f, t + i * 0.07, 0.35, 0.05, 1.8, 0, 0.9, (i - 2) * 0.3));
+      metal(t + 0.4, 523, [2, 3, 4.2, 5.4, 6.8], 3, 0.06, 1);
+      noise(t, 0.6, 0.08, 1.4, 'highpass', 6000, 9000, 0.7, 1);
+    },
+  },
+  {
+    key: 'dark', name: '闇', col: '#7a3cff', members: '冥闇・虚空',
+    desc: '音が逆向きに吸い込まれるように膨らみ、ぷつりと途切れ、重く濁った低音だけが残る。',
+    play(t) {
+      const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(4000, t + 0.6);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.6); g.gain.setValueAtTime(0.0001, t + 0.61);
+      s.connect(f); f.connect(g); out(g, 0.1); s.start(t); s.stop(t + 0.65);           // 逆再生のような吸い込み
+      tone('sine', 36, t + 0.6, 0.02, 0.6, 2.4, 28, 0.2);
+      [55, 58.3, 77.8].forEach((fr) => tone('sawtooth', fr, t + 0.6, 0.05, 0.035, 2.2, 0, 0.6));
+      noise(t + 0.7, 0.4, 0.06, 1.5, 'bandpass', 700, 500, 6, 0.8);                  // かすかなささやき
+    },
+  },
+  {
+    key: 'poison', name: '毒', col: '#8cff3a', members: '毒牙・溶解',
+    desc: 'ゴポゴポと泡立ち、ジュウッと何かが溶ける。粘りけのある不穏な音。',
+    play(t) {
+      for (let i = 0; i < 22; i++) { const f = 120 + Math.random() * 260; tone('sine', f, t + Math.random() * 1.4, 0.004, 0.18, 0.09, f * 1.8, 0.2, Math.random() - 0.5); }
+      noise(t + 0.2, 0.15, 0.3, 1.2, 'highpass', 3000, 6500, 0.7, 0.4);
+      tone('sawtooth', 73, t, 0.3, 0.03, 1.6, 69, 0.4);
+    },
+  },
+  {
+    key: 'sound', name: '音', col: '#ff9ce6', members: '響',
+    desc: 'キィンと共鳴が立ち上がり、音程が上へ滑り、こだまが左右に返ってくる。',
+    play(t) {
+      const a = tone('sine', 440, t, 0.01, 0.3, 1.2, 1760, 0.3);
+      const b = tone('sine', 660, t + 0.06, 0.01, 0.2, 1.2, 2640, 0.3);
+      const g = ctx.createGain(); g.gain.value = 0.5; a.env.connect(g); b.env.connect(g); echo(g, 0.18, 0.45, 0.4);
+      metal(t, 880, [1, 2.01, 3.02], 1.6, 0.05, 0.6);
+    },
+  },
+  {
+    key: 'time', name: '刻', col: '#e9c46a', members: '刻',
+    desc: 'コチ、コチと時計が刻み、止まった一瞬のあと、時間が巻き戻るうなりが走る。',
+    play(t) {
+      for (let i = 0; i < 6; i++) { tone('square', 2600, t + i * 0.16, 0.001, 0.12, 0.02, 0, 0.3, i % 2 ? 0.3 : -0.3); noise(t + i * 0.16, 0.001, 0.2, 0.01, 'highpass', 5000, 6000); }
+      const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      f.type = 'bandpass'; f.Q.value = 2; f.frequency.setValueAtTime(3000, t + 1.1); f.frequency.exponentialRampToValueAtTime(250, t + 1.9);
+      g.gain.setValueAtTime(0.0001, t + 1.1); g.gain.exponentialRampToValueAtTime(0.5, t + 1.85); g.gain.setValueAtTime(0.0001, t + 1.86);
+      s.connect(f); f.connect(g); out(g, 0.5); s.start(t + 1.1); s.stop(t + 1.9);
+      metal(t + 1.86, 784, [1, 2.4, 3.9], 2, 0.06, 0.8);
+    },
+  },
+  {
+    key: 'life', name: '命', col: '#5fd98a', members: '翠・森羅',
+    desc: '木の鈴がころころ鳴り、葉ずれのさやさやと、あたたかい和音が芽吹く。',
+    play(t) {
+      [784, 880, 1047, 1175, 1319, 1568].forEach((f, i) => tone('triangle', f, t + i * 0.08 + Math.random() * 0.03, 0.003, 0.09, 0.5, 0, 0.5, (i - 2.5) * 0.25));
+      noise(t + 0.1, 0.3, 0.07, 1.0, 'highpass', 5000, 7000, 0.7, 0.4);
+      [261.6, 329.6, 392].forEach((f) => tone('sine', f, t + 0.3, 0.5, 0.05, 1.8, 0, 0.7));
+    },
+  },
+  {
+    key: 'steel', name: '鋼', col: '#d6dde8', members: '鋼',
+    desc: 'ガキィンと金床を打つ音、刃が擦れるシャリッという音、火花が散る。',
+    play(t) {
+      metal(t, 420, [1, 2.32, 3.88, 5.6, 7.3], 2.4, 0.18, 0.6);
+      noise(t, 0.001, 0.6, 0.06, 'highpass', 3000, 5000);
+      noise(t + 0.15, 0.05, 0.35, 0.35, 'bandpass', 2500, 7000, 4, 0.3);
+      crackle(t + 0.05, 0.6, 18, 6000, 0.3);
+    },
+  },
+  {
+    key: 'star', name: '星', col: '#bcd7ff', members: '流星',
+    desc: 'ヒュウゥと笛のように落ちてきて、ズンと遠くに着弾し、きらめきが降る。',
+    play(t) {
+      tone('sine', 2800, t, 0.02, 0.08, 1.0, 300, 0.4);
+      noise(t, 0.3, 0.12, 0.8, 'bandpass', 4000, 600, 3, 0.4);
+      boom(t + 1.0, 70, 30, 1.6, 0.6);
+      noise(t + 1.0, 0.002, 0.4, 0.5, 'lowpass', 2000, 200, 0.7, 0.4);
+      for (let i = 0; i < 10; i++) tone('sine', 2500 + Math.random() * 3000, t + 1.1 + Math.random() * 1.0, 0.002, 0.03, 0.4, 0, 0.8, Math.random() * 2 - 1);
+    },
+  },
+  {
+    key: 'illusion', name: '幻', col: '#d79bff', members: '幻影',
+    desc: 'わずかにずれた和音がゆらゆら揺れ、こだまが重なって、どこから鳴っているのかわからなくなる。',
+    play(t) {
+      const g = ctx.createGain(); g.gain.value = 1;
+      [[880, -0.8], [886, 0.8], [1320, -0.4], [1329, 0.4]].forEach(([f, pan]) => {
+        const o = tone('sine', f, t, 0.4, 0.12, 1.6, 0, 0.6, pan);
+        const v = ctx.createOscillator(), vg = ctx.createGain(); v.frequency.value = 5 + Math.random() * 3; vg.gain.value = 12;
+        v.connect(vg); vg.connect(o.frequency); v.start(t); v.stop(t + 2.1); o.env.connect(g);
+      });
+      const e = ctx.createGain(); e.gain.value = 0.25; g.connect(e); echo(e, 0.23, 0.55, 0.6);
+    },
+  },
+  {
+    key: 'blood', name: '血', col: '#d0182f', members: '紅血',
+    desc: 'ドクン、ドクンと重い鼓動が二度、湿った音がして、低い脈動が残る。',
+    play(t) {
+      [[0, 0.7], [0.28, 0.5], [0.9, 0.6], [1.18, 0.4]].forEach(([d, p]) => { tone('sine', 62, t + d, 0.006, p, 0.22, 42, 0.15); noise(t + d, 0.003, p * 0.25, 0.08, 'lowpass', 300, 120); });
+      noise(t + 0.55, 0.01, 0.2, 0.18, 'bandpass', 900, 400, 4, 0.3);
+      tone('sawtooth', 41, t, 0.6, 0.03, 1.6, 0, 0.3);
+    },
+  },
+];
+
+// ── 画面 ──
+const grid = document.getElementById('grid');
+let playing = null;
+function mark(card) {
+  if (playing) playing.classList.remove('playing');
+  playing = card; if (card) card.classList.add('playing');
+  clearTimeout(mark.t); mark.t = setTimeout(() => { if (playing) playing.classList.remove('playing'); playing = null; }, 2600);
+}
+ELEMENTS.forEach((el) => {
+  const card = document.createElement('div');
+  card.className = 'card'; card.style.setProperty('--c', el.col);
+  card.innerHTML = `<div class="name"><b>${el.name}</b><span>${el.members}</span></div><p class="desc">${el.desc}</p>`
+    + '<div class="btns"><button type="button" data-k="solo">属性だけ</button><button type="button" data-k="mix">放つ音と</button></div>';
+  card.querySelector('[data-k="solo"]').onclick = () => { ensure(); el.play(ctx.currentTime + 0.05); mark(card); };
+  card.querySelector('[data-k="mix"]').onclick = () => { ensure(); const t = ctx.currentTime + 0.05; strike(t); el.play(t); mark(card); };
+  grid.appendChild(card);
+});
+document.getElementById('strike-only').onclick = () => { ensure(); strike(ctx.currentTime + 0.05); };
+document.getElementById('vol').oninput = (e) => { if (master) master.gain.value = Number(e.target.value); };
+// 止める：音の環境ごと閉じて、次に鳴らすとき作り直す
+document.getElementById('stop').onclick = () => {
+  if (!ctx) return;
+  ctx.close(); ctx = null; noiseBuf = null;
+  mark(null);
+};
+</script>
+</body>
+</html>
