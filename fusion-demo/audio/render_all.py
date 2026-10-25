@@ -330,24 +330,20 @@ def sound_el():
 
 @sound('element/time')
 def time_el():
-    """刻：カチ、コチと乾いた時計の刻み。止まった一瞬のあと、時間が巻き戻るうなりが走る"""
-    s = Sound(3.6, 30)
-    beat = 0.45
-    stop = beat * 4 + 0.1
+    """刻：チッ、タクと時計が刻み（clock_tick.py の Tick / Tack）、止まった一瞬のあと、時間が巻き戻るうなりが走る"""
+    import clock_tick
+    s = Sound(3.4, 30)
+    beat = 0.5  # 演出に収めるため、時計の 1 秒間隔を半分に詰める
+    stop = 0.05 + beat * 3 + 0.25
     # 巻き戻り（こちらにだけ残響を付ける）
     s.reverse_swell(stop + 0.85, 0.85, 'band', 1200, 0.9)
-    rev = s.filt(s.white(), 'band', s.curve([(0, 4000), (stop, 4000), (stop + 0.85, 250), (3.6, 250)]), q=2) * s.env([(stop, 0), (stop + 0.84, 0.8), (stop + 0.86, 0)])
+    rev = s.filt(s.white(), 'band', s.curve([(0, 4000), (stop, 4000), (stop + 0.85, 250), (3.4, 250)]), q=2) * s.env([(stop, 0), (stop + 0.84, 0.8), (stop + 0.86, 0)])
     s.add(rev, 0.6)
     s.thump(stop + 0.86, 90, 45, 0.4, 1.5, 0.5)
     s.reverb(2.2, 0.35, 4000)
-    # 刻み：残響を付けない乾いた音。一打は「カチ」と、歯車が噛む小さな「チッ」の二段
-    for i in range(4):
-        st = 0.05 + i * beat
-        hi = i % 2 == 0  # カチ（やや高い）とコチ（やや低い）を交互に
-        s.burst(st, 0.0006, 'high', 5000, gain=0.9, pan=-0.15 if hi else 0.15)
-        s.resonate(st, [4200, 6300] if hi else [3300, 5000], 0.004, 0.9, -0.15 if hi else 0.15, q=14)
-        s.resonate(st, [1100] if hi else [900], 0.006, 0.25, 0, q=6)
-        s.resonate(st + 0.014, [5200] if hi else [4300], 0.002, 0.3, 0, q=10)
+    # 刻み：残響なし。Tick / Tack を交互に4回
+    loop = clock_tick.clock_loop(seconds=beat * 4, interval=beat)
+    s.buf[:, : loop.shape[1]] += loop * 0.7
     return s
 
 
