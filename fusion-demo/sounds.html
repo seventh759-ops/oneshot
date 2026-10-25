@@ -135,6 +135,17 @@ function boom(t, f0, f1, d, peak) {
 function crackle(t, span, n, f, peak, pan = 0.6) {
   for (let i = 0; i < n; i++) noise(t + Math.random() * span, 0.001, peak * (0.3 + Math.random() * 0.7), 0.015 + Math.random() * 0.03, 'bandpass', f, f * 0.8, 2, 0.2, (Math.random() * 2 - 1) * pan);
 }
+// 打ち合う金属：一瞬の打撃を、高さをずらした細い共鳴に通す（鐘のように長くは鳴らない）
+function clank(t, freqs, d, peak, pan = -0.1) {
+  const src = noiseSrc(), hit = env(t, 0.001, 1, 0.02);
+  src.connect(hit); src.start(t); src.stop(t + 0.03);
+  freqs.forEach((f, i) => {
+    const bp = ctx.createBiquadFilter(), g = env(t, 0.001, peak * 40 / (i + 1), d * (1 - i * 0.1));
+    bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 35;
+    hit.connect(bp); bp.connect(g); out(g, 0.35, pan + i * 0.05);
+  });
+}
+
 // こだま（遅延の繰り返し）
 function echo(node, time, fb, send = 0.4) {
   const d = ctx.createDelay(2), g = ctx.createGain(); d.delayTime.value = time; g.gain.value = fb;
@@ -304,11 +315,14 @@ const ELEMENTS = [
   },
   {
     key: 'steel', name: '鋼', col: '#d6dde8', members: '鋼',
-    desc: 'ガキィンと金床を打つ音、刃が擦れるシャリッという音、火花が散る。',
+    desc: 'ガキッと刃と刃が打ち合い、もう一度カキンと弾き、シャリッと擦れて火花が散る。',
     play(t) {
-      metal(t, 420, [1, 2.32, 3.88, 5.6, 7.3], 2.4, 0.18, 0.6);
-      noise(t, 0.001, 0.6, 0.06, 'highpass', 3000, 5000);
-      noise(t + 0.15, 0.05, 0.35, 0.35, 'bandpass', 2500, 7000, 4, 0.3);
+      clank(t, [1240, 1873, 2650, 3410, 4870], 0.28, 0.9);
+      tone('sine', 190, t, 0.002, 0.25, 0.15, 120, 0.1);
+      clank(t + 0.13, [980, 1510, 2210, 2980], 0.22, 0.6, 0.3);
+      const sc = noise(t + 0.2, 0.03, 0.4, 0.32, 'bandpass', 1800, 6000, 8, 0.3, -0.2);
+      const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 45; lg.gain.value = 1200;
+      l.connect(lg); lg.connect(sc.frequency); l.start(t + 0.2); l.stop(t + 0.6);
       crackle(t + 0.05, 0.6, 18, 6000, 0.3);
     },
   },
