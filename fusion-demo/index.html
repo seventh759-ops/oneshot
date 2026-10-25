@@ -676,6 +676,8 @@ async function fire() {
 }
 
 // ── 効果音（Web Audio で合成） ──
+// 音はいったん止めている。true に戻すと鳴る
+const SOUND_ON = false;
 const Sound = (() => {
   let ctx = null, master = null, verb = null;
   const ensure = () => {
@@ -859,9 +861,9 @@ const Sound = (() => {
     },
   };
   return {
-    unlock: ensure,
+    unlock() { if (SOUND_ON) ensure(); },
     play(name) {
-      if (!ensure()) return;
+      if (!SOUND_ON || !ensure()) return;
       const fn = name.startsWith('el_') ? EL[name.slice(3)] : S[name];
       try { fn(ctx.currentTime + 0.01); } catch { /* 音が出なくても続行 */ }
     },
