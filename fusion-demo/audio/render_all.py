@@ -74,14 +74,21 @@ def name():
 
 @sound('common/true_name')
 def true_name():
-    """真名解放：静寂のあとに、澄んだ高い一音（シンギングボウル）"""
-    s = Sound(3.5, 5)
-    base = 392
-    for k, (r, g) in enumerate(((1, 1), (2.71, 0.5), (5.15, 0.25), (8.21, 0.12))):
-        beat = 1 + 0.3 * np.sin(2 * np.pi * (1.1 + k * 0.4) * s.t)
-        s.add(s.osc(base * r + np.sin(2 * np.pi * 0.2 * s.t) * 0.8) * s.after(0.05, 1.6 - k * 0.25) * beat, 0.1 * g, (-1) ** k * 0.3)
-    s.add(s.filt(s.white(), 'high', 7000) * s.env([(0, 0), (0.4, 0.05), (2.5, 0)]) * s.turb(5, 0.5), 1.0)
-    s.reverb(3.2, 0.5, 6000)
+    """真名解放：刃を抜くようにシャッと駆け上がり、鋭く高い「キィン」が響く"""
+    s = Sound(2.6, 5)
+    hit = 0.22
+    # 抜く：高い方へ一気に駆け上がる
+    up = s.filt(s.white(), 'band', s.curve([(0, 2500), (hit, 9500), (2.6, 9500)]), q=2.5)
+    s.add(up * s.env([(0, 0), (hit - 0.02, 0.9), (hit, 0)]), 0.6, s.env([(0, -0.6), (hit, 0)]))
+    # キィン：鋭い立ち上がりの、高く澄んだ響き（わずかにうねらせる）
+    s.burst(hit, 0.002, 'high', 7000, gain=0.7)
+    base = 1760
+    for k, (r, g, d) in enumerate(((1, 1, 1.3), (2.32, 0.55, 0.9), (3.9, 0.3, 0.6), (5.6, 0.15, 0.35))):
+        beat = 1 + 0.25 * np.sin(2 * np.pi * (2.3 + k * 1.1) * s.t)
+        s.add(s.osc(base * r) * s.after(hit, d) * beat, 0.16 * g, (-1) ** k * 0.25)
+    # 細いきらめき
+    s.add(s.filt(s.white(), 'high', 9000) * s.env([(hit, 0), (hit + 0.05, 0.12), (2.2, 0)]) * s.turb(9, 0.6), 1.0)
+    s.reverb(2.4, 0.4, 9000, 2.2, 0.02)
     return s
 
 
