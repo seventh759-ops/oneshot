@@ -1,12 +1,15 @@
 """時計が時を刻む音（チクタク音）を合成して WAV に書き出す。単体で動く（numpy / scipy のみ）。
 
-音響設計
+音響設計（精密な歯車が噛み合う質感）
 - 2種類の音を1秒ごとに交互に鳴らす
-    Tick：やや高め（約2600Hz）の金属的な響き
-    Tack：やや低め（約1650Hz）の、木製寄りの鈍い響き
-- エンベロープ：アタック 1ms 以下、ディケイ 10〜30ms（指数減衰）、サスティン 0
-- 音源：ホワイトノイズ（目的の高さに細く絞る）と高周波の正弦波をブレンド
-- 400Hz 以下は急峻なハイパス（8次バターワース）でカットする
+    Tick：約6200Hz の金属的な響き
+    Tack：約4800Hz の、少し鈍い金属の響き
+    （ハイパスを 4000Hz にするため、響きはどちらも 4000Hz より上に置く）
+- エンベロープ：アタック 1ms 以下、ディケイ 5〜10ms（指数減衰）、サスティン 0
+- 音源：高周波の正弦波と、ホワイトノイズの「摩擦音」をブレンド
+    摩擦音は、細かな歯が次々に当たるように、極小の接触を 0.25〜0.45ms 間隔で 3 回連ねる（アタック 1ms 以内に収める）
+- ハイパス（8次バターワース）で 4000Hz 以下をカットする
+    HPF_ON_FRICTION_ONLY = True にすると、ハイパスを摩擦音だけにかけ、響きは元の高さ（2600Hz / 1650Hz）に戻る
 - 最後に全体のピークを -3dBFS に合わせ、音割れを防ぐ
 
 使い方:
@@ -19,8 +22,9 @@ from scipy import signal
 from scipy.io import wavfile
 
 SR = 48000
-LOW_CUT = 400          # これより下は不要な雑音としてカット
-PEAK = 10 ** (-3 / 20)  # 出力のピーク（-3dBFS）
+HPF_CUTOFF = 4000            # ハイパスの境目（Hz）
+HPF_ON_FRICTION_ONLY = False  # True：ハイパスは摩擦音だけ。響きは元の低めの高さに戻す
+PEAK = 10 ** (-3 / 20)       # 出力のピーク（-3dBFS）
 
 
 def envelope(n, attack, decay):
@@ -30,49 +34,69 @@ def envelope(n, attack, decay):
     return a * np.exp(-np.clip(t - attack, 0, None) / decay)
 
 
-def hit(freq, partials, noise_mix, q, attack, decay, length=0.08, seed=0):
+def highpass(x, cutoff=HPF_CUTOFF):
+    return signal.sosfilt(signal.butter(8, cutoff / (SR / 2), 'high', output='sos'), x)
+
+
+def friction(n, decay, center, rng):
+    """金属の鋭い摩擦音：細かな歯が次々に当たる極小の接触を 3 回、1ms 以内に連ねたノイズ"""
+    t = np.arange(n) / SR
+    contacts = np.zeros(n)
+    at = 0.0
+    for k in range(3):
+        contacts += (0.55 ** k) * np.exp(-np.clip(t - at, 0, None) / 0.0007) * (t >= at)
+        at += rng.uniform(0.00025, 0.00045)
+    noise = rng.standard_normal(n)
+    sos = signal.butter(2, [center * 0.75 / (SR / 2), min(center * 1.6, SR / 2 - 200) / (SR / 2)], 'bandpass', output='sos')
+    noise = signal.sosfilt(sos, noise)
+    x = noise * (contacts + envelope(n, 0.0002, decay) * 0.85)
+    return highpass(x) / (np.abs(highpass(x)).max() + 1e-12)
+
+
+def hit(freq, partials, friction_mix, attack, decay, friction_center, length=0.05, seed=0):
     """一打の音。
 
-    freq      : 中心の高さ（Hz）
-    partials  : 正弦波の倍音 [(倍率, 音量, 減衰の倍率), ...]。整数倍からずらすと金属的、少なく低めだと木製寄り
-    noise_mix : ノイズの割合（0〜1）。残りが正弦波
-    q         : ノイズを絞るバンドパスの鋭さ。高いほど音程感が出て「パン」という拍手っぽさが消える
+    freq           : 響きの中心の高さ（Hz）
+    partials       : 正弦波の倍音 [(倍率, 音量, 減衰の倍率), ...]。整数倍からずらすと金属的になる
+    friction_mix   : 摩擦音の割合（0〜1）。残りが正弦波の響き
+    friction_center: 摩擦音の中心の高さ（Hz）
     """
     n = int(SR * length)
     t = np.arange(n) / SR
     rng = np.random.default_rng(seed)
 
-    # 正弦波：倍音ごとに少しずつ早く消える
-    tone = np.zeros(n)
+    ring = np.zeros(n)
     for ratio, gain, dmul in partials:
-        tone += gain * np.sin(2 * np.pi * freq * ratio * t) * envelope(n, attack, decay * dmul)
-    tone /= np.abs(tone).max() + 1e-12
+        ring += gain * np.sin(2 * np.pi * freq * ratio * t) * envelope(n, attack, decay * dmul)
+    if not HPF_ON_FRICTION_ONLY:
+        ring = highpass(ring)
+    ring /= np.abs(ring).max() + 1e-12
 
-    # ノイズ：目的の高さだけに細く絞る（幅広いノイズのままだと拍手の音になる）
-    noise = rng.standard_normal(n)
-    sos = signal.butter(2, [freq / (1 + 1 / q) / (SR / 2), min(freq * (1 + 1 / q), SR / 2 - 100) / (SR / 2)], 'bandpass', output='sos')
-    noise = signal.sosfilt(sos, noise) * envelope(n, attack, decay * 0.6)
-    noise /= np.abs(noise).max() + 1e-12
-
-    x = (1 - noise_mix) * tone + noise_mix * noise
-    # 低音域（400Hz 以下）を完全にカット
-    x = signal.sosfilt(signal.butter(8, LOW_CUT / (SR / 2), 'high', output='sos'), x)
+    x = (1 - friction_mix) * ring + friction_mix * friction(n, decay * 0.7, friction_center, rng)
+    # 音量の形を付け直す：中身（高さ・摩擦の質感）はそのまま、立ち上がりと減衰を指定どおりにそろえる
+    #   ノイズの偶然で打音ごとにピークの位置や消え方がばらつくのを防ぐ
+    amp = np.abs(signal.hilbert(x))
+    amp = signal.sosfiltfilt(signal.butter(2, 2000 / (SR / 2), output='sos'), amp)
+    x = x / np.maximum(amp, amp.max() * 0.02) * envelope(n, attack, decay)
+    x = highpass(x)
     return x / (np.abs(x).max() + 1e-12)
 
 
 def tick(seed=1):
-    """Tick：約2600Hz。整数倍からずらした倍音で金属的に、減衰 18ms"""
-    return hit(2600, [(1, 1.0, 1.0), (2.41, 0.45, 0.6), (3.87, 0.2, 0.4)],
-               noise_mix=0.35, q=6, attack=0.0005, decay=0.018, seed=seed)
+    """Tick：高く鋭い金属。減衰 7ms"""
+    f = 2600 if HPF_ON_FRICTION_ONLY else 6200
+    return hit(f, [(1, 1.0, 1.0), (1.53, 0.5, 0.7), (2.17, 0.25, 0.5)],
+               friction_mix=0.5, attack=0.0003, decay=0.007, friction_center=9000, seed=seed)
 
 
 def tack(seed=2):
-    """Tack：約1650Hz。倍音を少なく、ノイズを多めにして木製寄りの鈍さに、減衰 12ms"""
-    return hit(1650, [(1, 1.0, 1.0), (1.9, 0.25, 0.5)],
-               noise_mix=0.5, q=4, attack=0.0003, decay=0.012, seed=seed)
+    """Tack：少し低く鈍い金属。摩擦音を多めに、減衰 6ms（Tick より少し詰まった音）"""
+    f = 1650 if HPF_ON_FRICTION_ONLY else 4800
+    return hit(f, [(1, 1.0, 1.0), (1.37, 0.35, 0.6)],
+               friction_mix=0.55, attack=0.0003, decay=0.006, friction_center=6500, seed=seed)
 
 
-def clock_loop(seconds=10.0, interval=1.0, tack_gain=0.8, start=0.05):
+def clock_loop(seconds=10.0, interval=1.0, tack_gain=0.85, start=0.05):
     """interval 秒ごとに Tick と Tack を交互に鳴らす（ステレオ。わずかに左右へ振る）"""
     n = int(SR * seconds)
     out = np.zeros((2, n))
@@ -83,8 +107,7 @@ def clock_loop(seconds=10.0, interval=1.0, tack_gain=0.8, start=0.05):
         x = tick(seed=10 + k) if is_tick else tack(seed=10 + k) * tack_gain
         i = int(pos * SR)
         m = min(len(x), n - i)
-        pan = -0.1 if is_tick else 0.1
-        ang = (pan + 1) * np.pi / 4
+        ang = ((-0.1 if is_tick else 0.1) + 1) * np.pi / 4
         out[0, i:i + m] += x[:m] * np.cos(ang)
         out[1, i:i + m] += x[:m] * np.sin(ang)
         k += 1
