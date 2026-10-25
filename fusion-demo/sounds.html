@@ -141,13 +141,30 @@ function echo(node, time, fb, send = 0.4) {
   node.connect(d); d.connect(g); g.connect(d); out(d, send);
 }
 
+// 低い金管：ずらした鋸波を、開いてすぐ閉じるローパスに通す
+function brass(t, freqs, a, d, peak, open = 900, send = 0.5) {
+  const f = ctx.createBiquadFilter(), g = env(t, a, peak, d);
+  f.type = 'lowpass'; f.Q.value = 0.7;
+  f.frequency.setValueAtTime(120, t); f.frequency.exponentialRampToValueAtTime(open, t + a); f.frequency.exponentialRampToValueAtTime(90, t + a + d);
+  f.connect(g); out(g, send);
+  for (const fr of freqs) for (const det of [-8, 0, 8]) {
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.detune.value = det;
+    o.connect(f); o.start(t); o.stop(t + a + d + 0.05);
+  }
+}
+
 // ── 刃の一撃（演出の「放つ瞬間」） ──
+//   鋭さ（乾いた打撃・空気を裂く音・金属の鳴り）の下に、重さ（深い低音・低い金管・胴鳴り・地鳴り）を敷く
 function strike(t) {
+  // 鋭さ
   noise(t, 0.001, 0.9, 0.012, 'highpass', 6000, 9000);
-  noise(t, 0.002, 1.0, 0.14, 'bandpass', 9000, 1800, 1.2);
-  metal(t + 0.01, 1580, [2, 2.76, 3.52, 4.31, 5.4], 1.8, 0.16, 0.7);
-  tone('sine', 5200, t + 0.01, 0.002, 0.05, 0.9, 4800);
-  boom(t, 90, 38, 0.45, 0.55);
+  noise(t, 0.002, 0.9, 0.14, 'bandpass', 9000, 1800, 1.2);
+  metal(t + 0.01, 1580, [2, 2.76, 3.52, 4.31, 5.4], 1.6, 0.1, 0.7);
+  // 重さ
+  boom(t, 52, 24, 2.8, 0.62);
+  brass(t, [36.7, 55, 73.4], 0.015, 1.6, 0.16, 1100, 0.6);
+  noise(t, 0.003, 0.6, 1.1, 'lowpass', 500, 60, 0.7, 0.3);
+  noise(t + 0.05, 0.3, 0.35, 2.6, 'lowpass', 140, 50, 0.7, 0.8);
 }
 
 // ── 属性ごとの音 ──
