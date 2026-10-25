@@ -534,23 +534,38 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   };
   const arms = () => { g.beginPath(); armPath(R([2, -82]), hands[0]); armPath(R([-4, -83]), hands[1]); };
 
-  g.save();
-  // 縁の光（属性の色で光る）
-  g.shadowColor = col; g.shadowBlur = 30 * dpr() * glow;
-  g.strokeStyle = hexA(col, 0.9 * glow); g.lineWidth = 2 * dpr();
-  // 人物は不透明な暗い色で塗る（後ろの光が透けないように）
+  // 人物は一枚の影として描く：裾・脚・体・腕・柄・手をまず別の画用紙に同じ暗い色で塗り、
+  //   それを属性の色に染めた写しを少しずらして重ねて縁にする。パーツ同士の境目には線が出ない
+  const out = g;
+  const [mask, tint] = figureBuffers(out.canvas);
+  g = mask.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, mask.width, mask.height);
   const dark = g.createLinearGradient(0, base - 112 * u, 0, base);
   dark.addColorStop(0, '#0d0820'); dark.addColorStop(1, '#241544');
-  tail(); g.fillStyle = dark; g.fill(); g.stroke();
-  // 脚・体・腕は、先に縁の色で太めに描いてから暗い色で塗りつぶす（重なった内側に線が残らない）
-  g.lineCap = 'round'; g.lineJoin = 'round';
-  legs(); g.lineWidth = 6 * u + 4 * dpr(); g.stroke();
-  body(); g.lineWidth = 4 * dpr(); g.stroke();
-  arms(); g.lineWidth = 6 * u + 4 * dpr(); g.stroke();
-  g.shadowBlur = 0;
-  legs(); g.strokeStyle = dark; g.lineWidth = 6 * u; g.stroke();
-  body(); g.fillStyle = dark; g.fill();
+  g.fillStyle = dark; g.strokeStyle = dark; g.lineCap = 'round'; g.lineJoin = 'round';
+  tail(); g.fill();
+  legs(); g.lineWidth = 6 * u; g.stroke();
+  body(); g.fill();
   arms(); g.lineWidth = 6 * u; g.stroke();
+  const perp = [-dir[1], dir[0]], gc = along(4);
+  g.lineWidth = 2.2 * u; // 鍔
+  g.beginPath(); g.moveTo(...P([gc[0] + perp[0] * 6, gc[1] + perp[1] * 6])); g.lineTo(...P([gc[0] - perp[0] * 6, gc[1] - perp[1] * 6])); g.stroke();
+  g.lineWidth = 1.8 * u; // 柄
+  g.beginPath(); g.moveTo(...P(gc)); g.lineTo(...P(along(-9))); g.stroke();
+  for (const hd of hands) { g.beginPath(); g.arc(...P(hd), 3.4 * u, 0, Math.PI * 2); g.fill(); }
+  const tg = tint.getContext('2d');
+  tg.globalCompositeOperation = 'copy'; tg.drawImage(mask, 0, 0);
+  tg.globalCompositeOperation = 'source-in'; tg.fillStyle = hexA(col, 0.9 * glow); tg.fillRect(0, 0, tint.width, tint.height);
+  g = out;
+
+  g.save();
+  // 縁の光（属性の色で光る）：ぼかした写しで後光、少しずらした写しで細い縁
+  g.shadowColor = col; g.shadowBlur = 30 * dpr() * glow;
+  g.drawImage(tint, 0, 0);
+  g.shadowBlur = 0;
+  const r = 2 * dpr();
+  for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) g.drawImage(tint, dx, dy);
+  g.drawImage(mask, 0, 0);
   // フードの奥で光る目（横顔なので一つ）
   g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
   g.globalAlpha *= glow;
@@ -570,25 +585,21 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   g.strokeStyle = hexA(scene.gold ? '#ffe9a8' : '#ffffff', Math.min(1, 0.75 * charge)); g.lineWidth = (scene.gold ? 1.6 : 1.1) * u;
   g.beginPath(); g.moveTo(gx, gy); g.lineTo(tx, ty); g.stroke();
   g.restore();
-  // 鍔と柄、柄を握る手（暗い影）
-  g.save();
-  g.lineCap = 'round';
-  g.strokeStyle = dark; g.shadowColor = col; g.shadowBlur = 10 * dpr() * glow;
-  const perp = [-dir[1], dir[0]], gc = along(4);
-  g.lineWidth = 2.2 * u;
-  g.beginPath(); g.moveTo(...P([gc[0] + perp[0] * 6, gc[1] + perp[1] * 6])); g.lineTo(...P([gc[0] - perp[0] * 6, gc[1] - perp[1] * 6])); g.stroke();
-  g.lineWidth = 1.8 * u;
-  g.beginPath(); g.moveTo(...P(gc)); g.lineTo(...P(along(-9))); g.stroke();
-  g.fillStyle = dark;
-  for (const hd of hands) { g.beginPath(); g.arc(...P(hd), 3.4 * u, 0, Math.PI * 2); g.fill(); }
-  g.restore();
+}
+// 人影を描くための下書き用の画用紙（影の形と、その色違い）。画面の大きさに合わせて作り直す
+const figBufs = [document.createElement('canvas'), document.createElement('canvas')];
+function figureBuffers(c) {
+  for (const b of figBufs) if (b.width !== c.width || b.height !== c.height) { b.width = c.width; b.height = c.height; }
+  return figBufs;
 }
 
 // 剣の構え：溜めの進み（0〜1）と、放ってからの秒で決まる。grip は柄を握る位置、ang は刃の向き（右が 0、下が +）
-const SWORD_LEN = 58, SWING = 0.16;
+const SWORD_LEN = 58, SWING = 0.22;
 const LOW = { grip: [18, -62], ang: Math.PI * 0.35, lean: 0.04 };    // 前に下げて、切っ先を地面へ
 const HIGH = { grip: [-4, -120], ang: -Math.PI * 0.7, lean: -0.08 }; // 頭上に振りかぶり、切っ先は後ろの空へ
-const DOWN = { grip: [34, -68], ang: Math.PI * 0.12, lean: 0.26 };   // 前へ振り下ろした先
+const DOWN = { grip: [30, -52], ang: Math.PI * 0.32, lean: 0.3 };    // 前下へ斬り下ろした先（切っ先は足元の前へ）
+// 振り下ろしの速さ：構えから加速して、斬り終わりで止まる
+const swingEase = (s) => (s < 0.5 ? 2 * s * s : 1 - Math.pow(-2 * s + 2, 2) / 2);
 function swordPose(glow, struck) {
   const lerp = (a, b, k) => a + (b - a) * k;
   const arc = (A, B, k, [bx, by]) => ({
@@ -598,7 +609,7 @@ function swordPose(glow, struck) {
   });
   if (struck >= 0) {
     const s = Math.min(1, struck / SWING);
-    return arc(HIGH, DOWN, 1 - Math.pow(1 - s, 3), [10, -14]);
+    return arc(HIGH, DOWN, swingEase(s), [16, -16]);
   }
   const r = Math.max(0, Math.min(1, (glow - 0.3) / 0.65));
   return arc(LOW, HIGH, r * r * (3 - 2 * r), [18, -4]);
@@ -608,20 +619,24 @@ function drawSlash(g, cx, base, u, col, struck) {
   if (struck < 0 || struck > SWING + 0.5) return;
   const fade = struck <= SWING ? 1 : 1 - (struck - SWING) / 0.5;
   const upto = Math.min(1, struck / SWING);
-  const pts = [];
-  for (let i = 0; i <= 24; i++) {
-    const s = upto * i / 24, k = 1 - Math.pow(1 - s, 3);
-    const p = swordPose(1, s * SWING);
-    const d = SWORD_LEN + 4;
-    pts.push([cx + (p.grip[0] + Math.cos(p.ang) * d) * u, base + (p.grip[1] + Math.sin(p.ang) * d) * u, k]);
+  const outer = [], inner = [];
+  for (let i = 0; i <= 32; i++) {
+    const p = swordPose(1, upto * i / 32 * SWING);
+    const at = (d) => [cx + (p.grip[0] + Math.cos(p.ang) * d) * u, base + (p.grip[1] + Math.sin(p.ang) * d) * u];
+    outer.push(at(SWORD_LEN + 4)); inner.push(at(SWORD_LEN * 0.55));
   }
   g.save();
   g.globalCompositeOperation = 'lighter';
   g.lineCap = 'round'; g.lineJoin = 'round';
   g.shadowColor = col; g.shadowBlur = 30 * dpr();
-  for (const [w, c, a] of [[9 * u, col, 0.55], [3 * u, scene.gold ? '#ffe9a8' : '#ffffff', 0.9]]) {
+  // 刃が通った面（三日月）
+  g.fillStyle = hexA(col, 0.35 * fade);
+  g.beginPath(); outer.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  [...inner].reverse().forEach(([x, y]) => g.lineTo(x, y)); g.closePath(); g.fill();
+  // 切っ先の軌跡（太い光と白い芯）
+  for (const [w, c, a] of [[6 * u, col, 0.6], [2 * u, scene.gold ? '#ffe9a8' : '#ffffff', 0.95]]) {
     g.strokeStyle = hexA(c, a * fade); g.lineWidth = w * fade + 1;
-    g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    g.beginPath(); outer.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
   }
   g.restore();
 }
