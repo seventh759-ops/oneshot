@@ -164,6 +164,11 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
       <button class="pick" data-v="random" type="button">運命に任せる</button>
       <button id="fire" type="button">撃つ</button>
     </div>
+    <div class="row">
+      <label>人影</label>
+      <button class="pick" data-art="pixel" type="button">ドット絵</button>
+      <button class="pick" data-art="smooth" type="button">なめらか</button>
+    </div>
   </section>
 </main>
 
@@ -446,7 +451,7 @@ function loop() {
 // ── 舞台（参考：フードの人物が腕を広げ、頭上に光の輪、足元から回路のような光が立ち上る） ──
 //   p：組み上がり（0 → 1）。決め台詞から技名までのあいだに暗闇から浮かび上がる
 //   放つ瞬間に白く弾け、そのあと薄れる
-const scene = { run: false, col: '#9b7bff', t0: 0, build: 3000, strikeAt: 0, dim: 0, gold: 0, pillars: [], rays: [], mist: [] };
+const scene = { pixel: true, run: false, col: '#9b7bff', t0: 0, build: 3000, strikeAt: 0, dim: 0, gold: 0, pillars: [], rays: [], mist: [] };
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
@@ -543,12 +548,12 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   };
   const arms = () => { g.beginPath(); armPath(R([2, -82]), hands[0]); armPath(R([-4, -83]), hands[1]); };
 
-  // 人物は一枚の影として描く：裾・脚・体・腕・柄・手をまず別の画用紙に同じ暗い色で塗り、
+  // 人物は一枚の影として描く：裾・脚・体・頭・腕・柄・手をまず別の画用紙に同じ暗い色で塗り、
   //   それを属性の色に染めた写しを少しずらして重ねて縁にする。パーツ同士の境目には線が出ない
   const out = g;
-  const [mask, tint] = figureBuffers(out.canvas);
+  const px = pixelSize(u);
+  const mask = pixLayer('mask', out.canvas, px);
   g = mask.getContext('2d');
-  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, mask.width, mask.height);
   const dark = g.createLinearGradient(0, base - 112 * u, 0, base);
   dark.addColorStop(0, '#0d0820'); dark.addColorStop(1, '#241544');
   g.fillStyle = dark; g.strokeStyle = dark; g.lineCap = 'round'; g.lineJoin = 'round';
@@ -564,44 +569,76 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   g.lineWidth = 1.8 * u; // 柄
   g.beginPath(); g.moveTo(...P(gc)); g.lineTo(...P(along(-9))); g.stroke();
   for (const hd of hands) { g.beginPath(); g.arc(...P(hd), 3.4 * u, 0, Math.PI * 2); g.fill(); }
-  const tg = tint.getContext('2d');
-  tg.globalCompositeOperation = 'copy'; tg.drawImage(mask, 0, 0);
+  crisp(mask, px);
+  const tint = pixLayer('tint', out.canvas, px), tg = tint.getContext('2d');
+  tg.setTransform(1, 0, 0, 1, 0, 0);
+  tg.drawImage(mask, 0, 0);
   tg.globalCompositeOperation = 'source-in'; tg.fillStyle = hexA(col, 0.9 * glow); tg.fillRect(0, 0, tint.width, tint.height);
+  tg.globalCompositeOperation = 'source-over';
+  // 光る目（横顔なので一つ）。ドット絵では一粒の白いドット
+  const eye = PR([5, -102]);
+  if (px > 1) {
+    const mg = mask.getContext('2d');
+    mg.setTransform(1, 0, 0, 1, 0, 0);
+    mg.fillStyle = hexA('#ffffff', glow); mg.fillRect(Math.round(eye[0] / px), Math.round(eye[1] / px), 1, 1);
+  }
   g = out;
 
   g.save();
-  // 縁の光（属性の色で光る）：ぼかした写しで後光、少しずらした写しで細い縁
+  // 縁の光（属性の色で光る）：ぼかした写しで後光、一つ分ずらした写しで細い縁
   g.shadowColor = col; g.shadowBlur = 30 * dpr() * glow;
-  g.drawImage(tint, 0, 0);
+  blit(g, tint, px);
   g.shadowBlur = 0;
-  const r = 2 * dpr();
-  for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) g.drawImage(tint, dx, dy);
-  g.drawImage(mask, 0, 0);
-  // 光る目（横顔なので一つ）
-  g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
-  g.globalAlpha *= glow;
-  const eye = PR([5, -102]);
-  g.fillRect(eye[0], eye[1], 2.6 * u, 1.1 * u);
+  const r = px > 1 ? px : 2 * dpr();
+  for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) blit(g, tint, px, dx, dy);
+  blit(g, mask, px);
+  if (px === 1) {
+    g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
+    g.globalAlpha *= glow;
+    g.fillRect(eye[0], eye[1], 2.6 * u, 1.1 * u);
+  }
   g.restore();
 
   // 剣：刃は属性の色で光り、振り上げたあとは力がたまるように脈打つ
-  g.save();
-  const [gx, gy] = P(along(4)), [tx, ty] = P(along(4 + SWORD_LEN));
-  g.globalCompositeOperation = 'lighter';
-  g.lineCap = 'round';
   const charge = struck >= 0 ? 1.4 : glow < 1 ? 0.35 + glow * 0.5 : 0.9 + 0.25 * Math.sin(now / 70);
+  const blade = pixLayer('blade', out.canvas, px), bg = blade.getContext('2d');
+  const [gx, gy] = P(along(4)), [tx, ty] = P(along(4 + SWORD_LEN));
+  bg.lineCap = px > 1 ? 'butt' : 'round';
+  bg.strokeStyle = hexA(col, Math.min(1, 0.8 * charge)); bg.lineWidth = Math.max(3.2 * u, 3 * px); // ドット絵でも刃が細くなりすぎないように
+  bg.beginPath(); bg.moveTo(gx, gy); bg.lineTo(tx, ty); bg.stroke();
+  bg.strokeStyle = hexA(scene.gold ? '#ffe9a8' : '#ffffff', Math.min(1, 0.75 * charge)); bg.lineWidth = Math.max((scene.gold ? 1.6 : 1.1) * u, px);
+  bg.beginPath(); bg.moveTo(gx, gy); bg.lineTo(tx, ty); bg.stroke();
+  crisp(blade, px);
+  g.save();
+  g.globalCompositeOperation = 'lighter';
   g.shadowColor = col; g.shadowBlur = 26 * dpr() * charge;
-  g.strokeStyle = hexA(col, Math.min(1, 0.8 * charge)); g.lineWidth = 3.2 * u;
-  g.beginPath(); g.moveTo(gx, gy); g.lineTo(tx, ty); g.stroke();
-  g.strokeStyle = hexA(scene.gold ? '#ffe9a8' : '#ffffff', Math.min(1, 0.75 * charge)); g.lineWidth = (scene.gold ? 1.6 : 1.1) * u;
-  g.beginPath(); g.moveTo(gx, gy); g.lineTo(tx, ty); g.stroke();
+  blit(g, blade, px);
   g.restore();
 }
-// 人影を描くための下書き用の画用紙（影の形と、その色違い）。画面の大きさに合わせて作り直す
-const figBufs = [document.createElement('canvas'), document.createElement('canvas')];
-function figureBuffers(c) {
-  for (const b of figBufs) if (b.width !== c.width || b.height !== c.height) { b.width = c.width; b.height = c.height; }
-  return figBufs;
+// ドット絵：人影・剣・斬撃を粗い升目に描いてから、ぼかさずに拡大する（なめらかなら升目は 1）
+function pixelSize(u) { return scene.pixel ? Math.max(2, Math.round(1.7 * u)) : 1; }
+const pixBufs = {};
+function pixLayer(key, c, px) {
+  const b = (pixBufs[key] ||= document.createElement('canvas'));
+  const w = Math.ceil(c.width / px), hh = Math.ceil(c.height / px);
+  if (b.width !== w || b.height !== hh) { b.width = w; b.height = hh; }
+  const x = b.getContext('2d', { willReadFrequently: true });
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, w, hh);
+  x.setTransform(1 / px, 0, 0, 1 / px, 0, 0);
+  return b;
+}
+// 升目の縁のにじみを消し、ドットを「ある／ない」の二択にする
+function crisp(b, px) {
+  if (px === 1) return;
+  const x = b.getContext('2d', { willReadFrequently: true });
+  const d = x.getImageData(0, 0, b.width, b.height), a = d.data;
+  for (let i = 3; i < a.length; i += 4) a[i] = a[i] > 100 ? 255 : 0;
+  x.putImageData(d, 0, 0);
+}
+function blit(g, b, px, dx = 0, dy = 0) {
+  g.imageSmoothingEnabled = px === 1;
+  g.drawImage(b, dx, dy, b.width * px, b.height * px);
+  g.imageSmoothingEnabled = true;
 }
 
 // 剣の構え：溜めの進み（0〜1）と、放ってからの秒で決まる。grip は柄を握る位置、ang は刃の向き（右が 0、下が +）
@@ -636,10 +673,9 @@ function drawSlash(g, cx, base, u, col, struck) {
     const at = (d) => [cx + (p.grip[0] + Math.cos(p.ang) * d) * u, base + (p.grip[1] + Math.sin(p.ang) * d) * u];
     outer.push(at(SWORD_LEN + 4)); inner.push(at(SWORD_LEN * 0.55));
   }
-  g.save();
-  g.globalCompositeOperation = 'lighter';
+  const out = g, px = pixelSize(u), buf = pixLayer('slash', out.canvas, px);
+  g = buf.getContext('2d');
   g.lineCap = 'round'; g.lineJoin = 'round';
-  g.shadowColor = col; g.shadowBlur = 30 * dpr();
   // 刃が通った面（三日月）
   g.fillStyle = hexA(col, 0.35 * fade);
   g.beginPath(); outer.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
@@ -649,6 +685,11 @@ function drawSlash(g, cx, base, u, col, struck) {
     g.strokeStyle = hexA(c, a * fade); g.lineWidth = w * fade + 1;
     g.beginPath(); outer.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
   }
+  g = out;
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  g.shadowColor = col; g.shadowBlur = 30 * dpr();
+  blit(g, buf, px);
   g.restore();
 }
 function drawScene(now) {
@@ -1169,6 +1210,11 @@ const Sound = (() => {
 })();
 
 document.querySelectorAll('.pick[data-v]').forEach((b) => { b.onclick = () => { ending = b.dataset.v; render(); }; });
+// 人影の描き方（ドット絵／なめらか）
+const artPicks = document.querySelectorAll('.pick[data-art]');
+const showArt = () => artPicks.forEach((b) => b.classList.toggle('on', (b.dataset.art === 'pixel') === scene.pixel));
+artPicks.forEach((b) => { b.onclick = () => { scene.pixel = b.dataset.art === 'pixel'; showArt(); }; });
+showArt();
 $('fire').onclick = fire;
 window.addEventListener('resize', () => { if (!$('stage').hidden) sizeCanvas(); });
 
