@@ -484,69 +484,78 @@ function strokePartial(g, pts, frac) {
 }
 // フードの人物：両腕を広げ、マントがはためく。u は身長の 1/100
 function drawFigure(g, cx, base, u, col, glow, now, struck) {
-  const sway = Math.sin(now / 420) * 2 * u;
-  const cape = () => {
-    g.beginPath();
-    g.moveTo(cx - 12 * u, base - 86 * u);
-    g.bezierCurveTo(cx - 30 * u, base - 78 * u, cx - 58 * u - sway, base - 52 * u, cx - 66 * u - sway, base - 22 * u);
-    g.lineTo(cx - 52 * u - sway, base - 16 * u); g.lineTo(cx - 60 * u - sway * 1.3, base - 2 * u);
-    g.lineTo(cx - 34 * u, base - 8 * u); g.lineTo(cx - 22 * u, base + 2 * u); g.lineTo(cx - 12 * u, base - 20 * u);
-    g.lineTo(cx + 12 * u, base - 20 * u); g.lineTo(cx + 22 * u, base + 2 * u); g.lineTo(cx + 34 * u, base - 8 * u);
-    g.lineTo(cx + 60 * u + sway * 1.3, base - 2 * u); g.lineTo(cx + 52 * u + sway, base - 16 * u);
-    g.lineTo(cx + 66 * u + sway, base - 22 * u);
-    g.bezierCurveTo(cx + 58 * u + sway, base - 52 * u, cx + 30 * u, base - 78 * u, cx + 12 * u, base - 86 * u);
-    g.closePath();
-  };
-  // 人影：フード・肩・衣を一続きの輪郭で描く（右半分の点を左右反転してつなぐ。単位は u、上がマイナス）
-  const right = [
-    [0, -109], [6, -108], [10, -103], [11.5, -96], [11, -90], [14, -87.5], [16, -86],
-    [18, -82], [17, -76], [15, -70], [11, -58], [12, -48], [15, -25], [18, -1], [7, 0], [0, -2],
-  ];
-  const outline = [...right, ...right.slice(1, -1).reverse().map(([x, y]) => [-x, y])];
-  const figure = () => {
-    const pts = outline.map(([x, y]) => [cx + x * u, base + y * u]);
+  // 人影は横向き（右を向く）。単位は u、右が前、上がマイナス
+  const P = ([x, y]) => [cx + x * u, base + y * u];
+  const sway = Math.sin(now / 380) * 2.5 + Math.sin(now / 170) * 0.8;
+  const smooth = (list) => {
+    const pts = list.map(P);
     g.beginPath();
     const mid = (i) => { const [ax, ay] = pts[i % pts.length], [bx, by] = pts[(i + 1) % pts.length]; return [(ax + bx) / 2, (ay + by) / 2]; };
     g.moveTo(...mid(0));
     for (let i = 1; i <= pts.length; i++) g.quadraticCurveTo(...pts[i % pts.length], ...mid(i));
     g.closePath();
   };
-  // 剣と腕：両手で柄を握る。溜めのあいだに頭上へ振り上げ、放つ瞬間に振り下ろす
+  // 上半身は腰（0, -52）を軸に傾ける：振りかぶると少し反り、振り下ろすと前へ踏み込む
   const pose = swordPose(glow, struck);
-  const P = ([x, y]) => [cx + x * u, base + y * u];
+  const R = ([x, y]) => {
+    const dy = y + 52, c = Math.cos(pose.lean), s = Math.sin(pose.lean);
+    return [x * c - dy * s, x * s + dy * c - 52];
+  };
+  const PR = (q) => P(R(q));
+  const smoothR = (list) => smooth(list.map(R));
+  // コートの裾（後ろへなびく）
+  const tail = () => smoothR([[-13, -56], [-18, -42], [-30 - sway, -26], [-46 - sway * 1.6, -13], [-31 - sway, -17], [-16, -22], [-8, -34]]);
+  // 脚：前の膝を曲げて踏み込み、後ろ脚は伸ばす（コートの下から脛と靴がのぞく）
+  const legs = () => {
+    g.beginPath();
+    for (const pts of [[[4, -52], [13, -30], [16, -4], [23, -1.5]], [[-4, -52], [-7, -28], [-17, -5], [-11, -1.5]]]) {
+      g.moveTo(...P(pts[0])); pts.slice(1).forEach((q) => g.lineTo(...P(q)));
+    }
+  };
+  // フード・肩・胴・コート（肩に厚みを持たせ、裾は膝下まで）
+  const body = () => smoothR([
+    [2, -112], [8, -110], [11, -104], [11, -98], [8.5, -97], [8.5, -92], [7, -89],
+    [12, -86], [14, -78], [13, -68], [10, -58], [13, -46], [17, -28], [12, -26], [4, -28],
+    [-6, -26], [-16, -24], [-17, -36], [-13, -56],
+    [-15, -72], [-15, -84], [-12, -92], [-11, -102], [-6, -110],
+  ]);
+  // 剣と腕：両手で柄を握る。溜めのあいだに頭上へ振り上げ、放つ瞬間に前へ振り下ろす
   const dir = [Math.cos(pose.ang), Math.sin(pose.ang)];
   const along = (k) => [pose.grip[0] + dir[0] * k, pose.grip[1] + dir[1] * k];
   const hands = [pose.grip, along(-5)];
-  // 肩から手までを二つの節（上腕・前腕）でつなぎ、肘は体の外側へ曲げる
-  const armPath = (side, hand) => {
-    const s = [side * 16, -84], L = 21;
-    const dx = hand[0] - s[0], dy = hand[1] - s[1], d = Math.min(Math.hypot(dx, dy), 2 * L - 0.01);
+  // 肩から手までを二つの節でつなぐ。肘は前か下へ曲げる
+  const armPath = (s, hand) => {
+    const L = 21;
+    const dx = hand[0] - s[0], dy = hand[1] - s[1], len = Math.hypot(dx, dy), d = Math.min(len, 2 * L - 0.01);
     const hh = Math.sqrt(L * L - (d / 2) ** 2), mx = (s[0] + hand[0]) / 2, my = (s[1] + hand[1]) / 2;
-    let nx = -dy / Math.hypot(dx, dy), ny = dx / Math.hypot(dx, dy);
-    if ((nx * side) < 0) { nx = -nx; ny = -ny; }
+    let nx = -dy / len, ny = dx / len;
+    if (nx + ny < 0) { nx = -nx; ny = -ny; }
     g.moveTo(...P(s)); g.lineTo(...P([mx + nx * hh, my + ny * hh])); g.lineTo(...P(hand));
   };
-  const arms = () => { g.beginPath(); armPath(1, hands[0]); armPath(-1, hands[1]); };
+  const arms = () => { g.beginPath(); armPath(R([2, -82]), hands[0]); armPath(R([-4, -83]), hands[1]); };
+
   g.save();
   // 縁の光（属性の色で光る）
   g.shadowColor = col; g.shadowBlur = 30 * dpr() * glow;
   g.strokeStyle = hexA(col, 0.9 * glow); g.lineWidth = 2 * dpr();
   // 人物は不透明な暗い色で塗る（後ろの光が透けないように）
-  const dark = g.createLinearGradient(0, base - 109 * u, 0, base);
+  const dark = g.createLinearGradient(0, base - 112 * u, 0, base);
   dark.addColorStop(0, '#0d0820'); dark.addColorStop(1, '#241544');
-  cape(); g.fillStyle = dark; g.fill(); g.stroke();
-  // 体と腕は、先に縁の色で太めに描いてから暗い色で塗りつぶす（重なった内側に線が残らない）
+  tail(); g.fillStyle = dark; g.fill(); g.stroke();
+  // 脚・体・腕は、先に縁の色で太めに描いてから暗い色で塗りつぶす（重なった内側に線が残らない）
   g.lineCap = 'round'; g.lineJoin = 'round';
-  figure(); g.lineWidth = 4 * dpr(); g.stroke();
-  arms(); g.lineWidth = 6.5 * u + 4 * dpr(); g.stroke();
+  legs(); g.lineWidth = 6 * u + 4 * dpr(); g.stroke();
+  body(); g.lineWidth = 4 * dpr(); g.stroke();
+  arms(); g.lineWidth = 6 * u + 4 * dpr(); g.stroke();
   g.shadowBlur = 0;
-  figure(); g.fillStyle = dark; g.fill();
-  arms(); g.strokeStyle = dark; g.lineWidth = 6.5 * u; g.stroke();
-  // フードの奥で光る目
+  legs(); g.strokeStyle = dark; g.lineWidth = 6 * u; g.stroke();
+  body(); g.fillStyle = dark; g.fill();
+  arms(); g.lineWidth = 6 * u; g.stroke();
+  // フードの奥で光る目（横顔なので一つ）
   g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
   g.globalAlpha *= glow;
-  g.fillRect(cx - 4.4 * u, base - 98 * u, 3 * u, 1.1 * u);
-  g.fillRect(cx + 1.4 * u, base - 98 * u, 3 * u, 1.1 * u);
+  const eye = PR([5.5, -101]);
+  g.fillRect(eye[0], eye[1], 2.6 * u, 1.1 * u);
   g.restore();
 
   // 剣：刃は属性の色で光り、振り上げたあとは力がたまるように脈打つ
@@ -571,27 +580,28 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   g.lineWidth = 1.8 * u;
   g.beginPath(); g.moveTo(...P(gc)); g.lineTo(...P(along(-9))); g.stroke();
   g.fillStyle = dark;
-  for (const hd of hands) { g.beginPath(); g.arc(...P(hd), 3.6 * u, 0, Math.PI * 2); g.fill(); }
+  for (const hd of hands) { g.beginPath(); g.arc(...P(hd), 3.4 * u, 0, Math.PI * 2); g.fill(); }
   g.restore();
 }
 
 // 剣の構え：溜めの進み（0〜1）と、放ってからの秒で決まる。grip は柄を握る位置、ang は刃の向き（右が 0、下が +）
 const SWORD_LEN = 58, SWING = 0.16;
-const LOW = { grip: [0, -60], ang: Math.PI / 2 };       // 胸の前で切っ先を下に
-const HIGH = { grip: [0, -116], ang: -Math.PI / 2 };    // 頭上で切っ先を天に
-const DOWN = { grip: [12, -58], ang: Math.PI * 0.32 };  // 振り下ろした先（右下へ）
+const LOW = { grip: [18, -62], ang: Math.PI * 0.35, lean: 0.04 };    // 前に下げて、切っ先を地面へ
+const HIGH = { grip: [-4, -120], ang: -Math.PI * 0.7, lean: -0.08 }; // 頭上に振りかぶり、切っ先は後ろの空へ
+const DOWN = { grip: [34, -68], ang: Math.PI * 0.12, lean: 0.26 };   // 前へ振り下ろした先
 function swordPose(glow, struck) {
   const lerp = (a, b, k) => a + (b - a) * k;
-  const arc = (A, B, k, bulge) => ({
-    grip: [lerp(A.grip[0], B.grip[0], k) + bulge * Math.sin(Math.PI * k), lerp(A.grip[1], B.grip[1], k)],
+  const arc = (A, B, k, [bx, by]) => ({
+    grip: [lerp(A.grip[0], B.grip[0], k) + bx * Math.sin(Math.PI * k), lerp(A.grip[1], B.grip[1], k) + by * Math.sin(Math.PI * k)],
     ang: lerp(A.ang, B.ang, k),
+    lean: lerp(A.lean, B.lean, k),
   });
   if (struck >= 0) {
     const s = Math.min(1, struck / SWING);
-    return arc(HIGH, DOWN, 1 - Math.pow(1 - s, 3), 22);
+    return arc(HIGH, DOWN, 1 - Math.pow(1 - s, 3), [10, -14]);
   }
   const r = Math.max(0, Math.min(1, (glow - 0.3) / 0.65));
-  return arc(LOW, HIGH, r * r * (3 - 2 * r), 26);
+  return arc(LOW, HIGH, r * r * (3 - 2 * r), [18, -4]);
 }
 // 振り下ろした剣の切っ先が描く光の弧
 function drawSlash(g, cx, base, u, col, struck) {
@@ -661,7 +671,7 @@ function drawScene(now) {
   // 人物（暗闇から浮かび上がる）
   g.globalCompositeOperation = 'source-over';
   g.globalAlpha = Math.min(1, ease * 1.3) * (struck < 0 ? 1 : Math.max(0.25, after));
-  drawFigure(g, cx, base, u, col, ease, now, struck);
+  drawFigure(g, cx - 14 * u, base, u, col, ease, now, struck);
   g.globalAlpha = 1;
 
   // 頭上の光の輪（後半に現れ、ゆっくり脈打つ）
@@ -673,9 +683,9 @@ function drawScene(now) {
     const hc = scene.gold ? '#e9c46a' : col;
     g.shadowColor = hc;
     g.strokeStyle = hexA(hc, 0.9 * halo); g.lineWidth = 3 * dpr();
-    g.beginPath(); g.ellipse(cx, base - 122 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.ellipse(cx - 14 * u, base - 124 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
     g.strokeStyle = hexA('#ffffff', 0.7 * halo); g.lineWidth = 1.2 * dpr();
-    g.beginPath(); g.ellipse(cx, base - 122 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.ellipse(cx - 14 * u, base - 124 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
     g.shadowBlur = 0;
   }
   // 足元の霧
@@ -687,7 +697,7 @@ function drawScene(now) {
     g.fillStyle = mg; g.beginPath(); g.arc(m.x, m.y, m.r, 0, Math.PI * 2); g.fill();
   }
   // 放つ瞬間：白く弾ける
-  drawSlash(g, cx, base, u, col, struck);
+  drawSlash(g, cx - 14 * u, base, u, col, struck);
   if (struck >= SWING && struck < SWING + 0.6) {
     g.globalCompositeOperation = 'lighter';
     g.fillStyle = `rgba(255,255,255,${0.7 * (1 - (struck - SWING) / 0.6)})`;
