@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>効果音・試聴</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* レイアウト：共通の演出音と属性の音を、場面の順に並べた試聴盤。カードは色の帯・名前・説明・再生ボタン */
+:root {
+  color-scheme: dark;
+  --void: #07060c;
+  --panel: #110f1a;
+  --line: #2b2740;
+  --text: #ece8f6;
+  --muted: #8e88a8;
+  --mincho: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --gothic: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--void); color: var(--text); font-family: var(--gothic); }
+button { font: inherit; }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+main {
+  max-width: 900px; margin: 0 auto; display: grid; gap: 22px;
+  padding-block: 20px 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header { display: grid; gap: 6px; }
+h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; letter-spacing: .08em; }
+h2 { margin: 0 0 10px; font-size: 15px; letter-spacing: .15em; }
+header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; max-width: 62ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); }
+.bar input { accent-color: #9b7bff; }
+.bar button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 12px 12px 12px 16px;
+  display: grid; gap: 8px; align-content: start; position: relative; overflow: hidden; min-width: 0;
+}
+.card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--c); }
+.card.playing { border-color: var(--c); }
+.name { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.name b { font-family: var(--mincho); font-size: 20px; color: var(--c); }
+.name span { font-size: 11px; color: var(--muted); }
+.desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; }
+.btns { display: flex; gap: 6px; }
+.btns button { flex: 1; min-width: 0; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 4px; padding: 7px 6px; cursor: pointer; font-size: 12px; }
+.btns button:hover { border-color: var(--c); }
+.flow { display: flex; gap: 8px; flex-wrap: wrap; }
+.flow button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 4px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+.note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>効果音・試聴</h1>
+    <p>効果音リストに沿って作った音（合成・48kHz）。「放つ音と」は刃の一撃に重ねたとき、実際の演出で鳴る形。イヤホン推奨。</p>
+  </header>
+  <div class="bar">
+    <label for="vol">音量</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.8">
+    <button id="stop" type="button">止める</button>
+  </div>
+
+  <section>
+    <h2>演出の流れで聞く</h2>
+    <div class="flow" id="flows"></div>
+    <p class="note">暗転 → 溜め → 技名 → 放つ → 結末 を、演出と同じ間隔で続けて鳴らす。属性は炎。</p>
+  </section>
+
+  <section>
+    <h2>共通の演出音</h2>
+    <div class="grid" id="common"></div>
+  </section>
+
+  <section>
+    <h2>属性ごとの音</h2>
+    <div class="grid" id="elements"></div>
+  </section>
+</main>
+
+<script>
+const COMMON = [
+  ['drone', '暗転と静寂', '空気が止まるような、低く不穏な持続音'],
+  ['tick', '文字送り', '決め台詞の文字が出るときの、小さく乾いた音'],
+  ['charge', '溜め', '光が集まり、吸い込まれるように高まっていく'],
+  ['name', '技名を叫ぶ', 'ルビが広がる風切りと、漢字が叩きつけられる衝撃'],
+  ['true_name', '真名解放', '静寂のあとに、澄んだ高い一音'],
+  ['strike', '放つ', '刃が空気を裂く鋭さと、腹に響く重い衝撃'],
+  ['win', '撃破', '静かに。遠くで一度だけ鳴る低い音と、深い残響'],
+  ['perfect', '極', '逆再生の膨らみから、深い低音と銅鑼。きらめく空気'],
+  ['death', '死亡', '重く沈む金管の「ブォーン」と、不協和の残り香'],
+  ['rewind', '戦いの前に戻る', '時間が巻き戻るような、逆向きのきらめき'],
+  ['click', '操作音', 'スキルを置く・外す・選ぶときの、小さなクリック'],
+];
+const ELEMENTS = [
+  ['fire', '炎', '紅蓮・爆', '#ff6a2b', '迫る炎の風圧、着弾、うなりながら噴き出す炎と火の粉'],
+  ['ice', '氷', '氷華', '#9fe8ff', 'ミシミシと凍りつき、パリンと砕けて、細かな破片が散る'],
+  ['thunder', '雷', '雷霆', '#ffe14a', 'バチッと放電し、ジジジと空気が焦げ、雷鳴が転がっていく'],
+  ['water', '水', '蒼流', '#3aa0ff', 'ザバッと跳ね、泡がいくつも昇り、流れが残る'],
+  ['wind', '風', '疾風', '#b8ffd8', '左から右へ、うなりを上げて突風が吹き抜ける'],
+  ['earth', '土', '岩砕・重星', '#c29a6b', 'ゴリゴリとせり上がり、ドンと砕けて破片が降る'],
+  ['light', '光', '聖光', '#fff3b0', '高い響きがふわっと満ち、澄んだ空気がきらめいて広がる'],
+  ['dark', '闇', '冥闇・虚空', '#7a3cff', '逆再生で吸い込まれ、ぷつりと途切れ、濁った低音とささやき'],
+  ['poison', '毒', '毒牙・溶解', '#8cff3a', 'ゴボゴボと低く泡立ち、ジュウッと何かが溶ける'],
+  ['sound', '音', '響', '#ff9ce6', '衝撃波がドンと抜け、共鳴が上へ滑り、こだまが左右に返る'],
+  ['time', '刻', '刻', '#e9c46a', 'コチ、コチと刻み、止まった一瞬のあと、巻き戻るうなり'],
+  ['life', '命', '翠・森羅', '#5fd98a', '木がコロコロと鳴り、葉ずれが揺れ、あたたかく芽吹く'],
+  ['steel', '鋼', '鋼', '#d6dde8', 'ガキッと打ち合い、もう一度カキンと弾き、シャリッと擦れる'],
+  ['star', '星', '流星', '#bcd7ff', 'ゴォォと迫り、ズドンと落ちる。重い地鳴りとかすかなきらめき'],
+  ['illusion', '幻', '幻影', '#d79bff', 'ずれた響きが揺らぎ、こだまが重なって出どころがぼやける'],
+  ['blood', '血', '紅血', '#d0182f', 'ドクン、ドクンと重い鼓動。湿った音と低い脈動'],
+];
+
+const $ = (id) => document.getElementById(id);
+let playing = [];
+const timers = [];
+function play(path) {
+  const a = new Audio(path);
+  a.volume = Number($('vol').value);
+  a.play().catch(() => { /* 再生できない環境では何もしない */ });
+  playing.push(a);
+  a.onended = () => { playing = playing.filter((x) => x !== a); };
+  return a;
+}
+function stopAll() {
+  playing.forEach((a) => a.pause());
+  playing = [];
+  timers.splice(0).forEach(clearTimeout);
+  document.querySelectorAll('.card.playing').forEach((c) => c.classList.remove('playing'));
+}
+function flash(card, ms) {
+  card.classList.add('playing');
+  setTimeout(() => card.classList.remove('playing'), ms);
+}
+function card(color, title, sub, desc, buttons) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.style.setProperty('--c', color);
+  el.innerHTML = `<div class="name"><b>${title}</b>${sub ? `<span>${sub}</span>` : ''}</div><p class="desc">${desc}</p><div class="btns"></div>`;
+  for (const [label, fn] of buttons) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.onclick = () => { fn(); flash(el, 2500); };
+    el.querySelector('.btns').appendChild(b);
+  }
+  return el;
+}
+
+COMMON.forEach(([key, title, desc]) => {
+  $('common').appendChild(card('#9b7bff', title, '', desc, [['再生', () => play(`audio/common/${key}.mp3`)]]));
+});
+ELEMENTS.forEach(([key, title, members, color, desc]) => {
+  $('elements').appendChild(card(color, title, members, desc, [
+    ['属性だけ', () => play(`audio/element/${key}.mp3`)],
+    ['放つ音と', () => { play('audio/common/strike.mp3'); play(`audio/element/${key}.mp3`); }],
+  ]));
+});
+
+// 演出の流れで続けて鳴らす（間隔は演出デモに合わせた目安）
+const FLOWS = [
+  ['撃破まで', 'win'],
+  ['極まで', 'perfect'],
+  ['死亡まで', 'death'],
+];
+FLOWS.forEach(([label, ending]) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.onclick = () => {
+    stopAll();
+    const seq = [[0, 'common/drone'], [1400, 'common/charge'], [2700, 'common/name']];
+    let at = 4300;
+    if (ending === 'perfect') { seq.push([at, 'common/true_name']); at += 2400; }
+    seq.push([at, 'common/strike'], [at, 'element/fire'], [at + (ending === 'death' ? 1400 : 600), `common/${ending}`]);
+    if (ending === 'death') seq.push([at + 4200, 'common/rewind']);
+    seq.forEach(([ms, p]) => timers.push(setTimeout(() => play(`audio/${p}.mp3`), ms)));
+  };
+  $('flows').appendChild(b);
+});
+$('stop').onclick = stopAll;
+$('vol').oninput = (e) => playing.forEach((a) => { a.volume = Number(e.target.value); });
+</script>
+</body>
+</html>
