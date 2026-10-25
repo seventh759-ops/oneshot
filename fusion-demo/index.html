@@ -87,10 +87,11 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
   position: fixed; inset: 0; z-index: 20; background: #000; overflow: hidden; display: grid; place-items: center;
   padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px));
 }
-#fx { position: absolute; inset: 0; width: 100%; height: 100%; }
+#fx, #scene { position: absolute; inset: 0; width: 100%; height: 100%; }
 #stage.shake { animation: shake .5s; }
 @keyframes shake { 20% { transform: translate(-8px, 4px); } 40% { transform: translate(7px, -5px); } 60% { transform: translate(-5px, -3px); } 80% { transform: translate(4px, 3px); } }
-.layer { position: relative; z-index: 1; text-align: center; display: grid; gap: 14px; justify-items: center; width: 100%; max-width: 720px; }
+.layer { position: relative; z-index: 1; text-align: center; display: grid; gap: 14px; justify-items: center; width: 100%; max-width: 720px; align-self: end; margin-bottom: max(6vh, 32px); }
+#line { text-shadow: 0 0 12px #000, 0 0 4px #000; }
 #line { font-family: var(--mincho); font-size: clamp(16px, 4vw, 22px); letter-spacing: .1em; min-height: 1.6em; color: var(--text); opacity: .9; }
 #who { font-size: 11px; letter-spacing: .4em; color: var(--muted); }
 #name { display: grid; gap: 6px; }
@@ -166,6 +167,7 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
 </main>
 
 <div id="stage" hidden>
+  <canvas id="scene" aria-hidden="true"></canvas>
   <canvas id="fx" aria-hidden="true"></canvas>
   <div id="vignette"></div>
   <div id="flash"></div>
@@ -381,7 +383,7 @@ function add(p) {
 function loop() {
   if (!fx.run) return;
   const { W, H, cx, cy } = center(), g = $('fx').getContext('2d');
-  g.globalCompositeOperation = 'source-over';
+  g.globalCompositeOperation = 'destination-out';
   g.fillStyle = 'rgba(0,0,0,0.22)';
   g.fillRect(0, 0, W, H);
   g.globalCompositeOperation = 'lighter';
@@ -440,6 +442,182 @@ function loop() {
   g.globalCompositeOperation = 'source-over';
   requestAnimationFrame(loop);
 }
+// ── 舞台（参考：フードの人物が腕を広げ、頭上に光の輪、足元から回路のような光が立ち上る） ──
+//   p：組み上がり（0 → 1）。決め台詞から技名までのあいだに暗闇から浮かび上がる
+//   放つ瞬間に白く弾け、そのあと薄れる
+const scene = { run: false, col: '#9b7bff', t0: 0, build: 3000, strikeAt: 0, dim: 0, pillars: [], rays: [], mist: [] };
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function startScene(col) {
+  const c = $('scene');
+  c.width = c.clientWidth * dpr(); c.height = c.clientHeight * dpr();
+  const W = c.width, H = c.height;
+  Object.assign(scene, { run: true, col, t0: performance.now(), strikeAt: 0, dim: 0 });
+  // 足元から立ち上る光の線：途中で直角に折れる回路のような線
+  scene.pillars = Array.from({ length: 18 }, () => {
+    const x = W * rnd(0.03, 0.97), y1 = H * rnd(0.55, 0.9), jog = rnd(-40, 40) * dpr(), y2 = H * rnd(0.05, 0.5);
+    return { pts: [[x, H], [x, y1], [x + jog, y1 - Math.abs(jog) * 0.6], [x + jog, y2]], delay: rnd(0, 0.45), w: rnd(1, 2.6) * dpr() };
+  });
+  // 上から降る光の筋
+  scene.rays = Array.from({ length: 12 }, () => ({ x: W * rnd(0.1, 0.9), bend: rnd(-0.15, 0.15) * W, len: H * rnd(0.25, 0.55), delay: rnd(0.2, 0.7) }));
+  // 足元の霧
+  scene.mist = Array.from({ length: 16 }, (_, i) => ({ x: W * (i / 15) + rnd(-30, 30) * dpr(), y: H * rnd(0.86, 1.0), r: rnd(0.08, 0.16) * Math.max(W, H), v: rnd(-0.15, 0.15) * dpr() }));
+  requestAnimationFrame(drawScene);
+}
+function stopScene() { scene.run = false; }
+function polyLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
+// 線を始点から frac（0〜1）の長さまで描く
+function strokePartial(g, pts, frac) {
+  let left = polyLen(pts) * frac;
+  g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+  let end = pts[0];
+  for (let i = 1; i < pts.length && left > 0; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], d = Math.hypot(x1 - x0, y1 - y0), k = Math.min(1, left / d);
+    end = [x0 + (x1 - x0) * k, y0 + (y1 - y0) * k];
+    g.lineTo(end[0], end[1]); left -= d;
+  }
+  g.stroke();
+  return end;
+}
+// フードの人物：両腕を広げ、マントがはためく。u は身長の 1/100
+function drawFigure(g, cx, base, u, col, glow, now) {
+  const sway = Math.sin(now / 420) * 2 * u;
+  const cape = () => {
+    g.beginPath();
+    g.moveTo(cx - 9 * u, base - 80 * u);
+    g.bezierCurveTo(cx - 30 * u, base - 74 * u, cx - 58 * u - sway, base - 52 * u, cx - 66 * u - sway, base - 22 * u);
+    g.lineTo(cx - 52 * u - sway, base - 16 * u); g.lineTo(cx - 60 * u - sway * 1.3, base - 2 * u);
+    g.lineTo(cx - 34 * u, base - 8 * u); g.lineTo(cx - 22 * u, base + 2 * u); g.lineTo(cx - 12 * u, base - 20 * u);
+    g.lineTo(cx + 12 * u, base - 20 * u); g.lineTo(cx + 22 * u, base + 2 * u); g.lineTo(cx + 34 * u, base - 8 * u);
+    g.lineTo(cx + 60 * u + sway * 1.3, base - 2 * u); g.lineTo(cx + 52 * u + sway, base - 16 * u);
+    g.lineTo(cx + 66 * u + sway, base - 22 * u);
+    g.bezierCurveTo(cx + 58 * u + sway, base - 52 * u, cx + 30 * u, base - 74 * u, cx + 9 * u, base - 80 * u);
+    g.closePath();
+  };
+  const body = () => {
+    g.beginPath();
+    g.moveTo(cx - 10 * u, base - 80 * u); g.lineTo(cx + 10 * u, base - 80 * u);
+    g.lineTo(cx + 8 * u, base - 46 * u); g.lineTo(cx + 9 * u, base); g.lineTo(cx + 3 * u, base);
+    g.lineTo(cx, base - 30 * u); g.lineTo(cx - 3 * u, base); g.lineTo(cx - 9 * u, base);
+    g.lineTo(cx - 8 * u, base - 46 * u); g.closePath();
+  };
+  // 腕：肩から外側の斜め下へ広げる（先細り）。手のひらは外へ開く
+  const arms = () => {
+    g.beginPath();
+    for (const d of [-1, 1]) {
+      g.moveTo(cx + d * 8 * u, base - 80 * u);
+      g.lineTo(cx + d * 47 * u, base - 50 * u);
+      g.lineTo(cx + d * 50 * u, base - 46 * u);
+      g.lineTo(cx + d * 45 * u, base - 46 * u);
+      g.lineTo(cx + d * 9 * u, base - 72 * u);
+      g.closePath();
+    }
+  };
+  const hood = () => {
+    g.beginPath();
+    g.moveTo(cx, base - 106 * u);
+    g.bezierCurveTo(cx + 9 * u, base - 100 * u, cx + 11 * u, base - 88 * u, cx + 9 * u, base - 80 * u);
+    g.lineTo(cx - 9 * u, base - 80 * u);
+    g.bezierCurveTo(cx - 11 * u, base - 88 * u, cx - 9 * u, base - 100 * u, cx, base - 106 * u);
+    g.closePath();
+  };
+  g.save();
+  // 縁の光（属性の色で光る）
+  g.shadowColor = col; g.shadowBlur = 30 * dpr() * glow;
+  g.strokeStyle = hexA(col, 0.9 * glow); g.lineWidth = 2 * dpr();
+  // 人物は不透明な暗い色で塗る（後ろの光が透けないように）
+  const dark = g.createLinearGradient(0, base - 106 * u, 0, base);
+  dark.addColorStop(0, '#0d0820'); dark.addColorStop(1, '#241544');
+  for (const part of [cape, arms, body, hood]) { part(); g.fillStyle = dark; g.fill(); g.stroke(); }
+  g.shadowBlur = 0;
+  // フードの奥で光る目
+  g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
+  g.globalAlpha = glow;
+  g.fillRect(cx - 4.2 * u, base - 92 * u, 3 * u, 1.1 * u);
+  g.fillRect(cx + 1.2 * u, base - 92 * u, 3 * u, 1.1 * u);
+  g.restore();
+}
+function drawScene(now) {
+  if (!scene.run) return;
+  const c = $('scene'), g = c.getContext('2d'), W = c.width, H = c.height;
+  const p = Math.min(1, (now - scene.t0) / (reduced ? 300 : scene.build));
+  const ease = p * p * (3 - 2 * p); // ゆっくり始まり、ゆっくり終わる
+  const struck = scene.strikeAt ? (now - scene.strikeAt) / 1000 : -1; // 放ってからの秒
+  const after = struck < 0 ? 1 : Math.max(0, 1 - struck / 1.4);       // 放ったあと薄れていく
+  const col = scene.col;
+  const u = Math.min(H * 0.0058, W * 0.0062), cx = W / 2, base = H * 0.86;
+
+  // 背景：奥から属性の色が満ちていく
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = '#05030c'; g.fillRect(0, 0, W, H);
+  const bg = g.createRadialGradient(cx, base - 70 * u, 10, cx, base - 70 * u, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, hexA(col, 0.55 * ease * after)); bg.addColorStop(0.5, hexA(col, 0.18 * ease * after)); bg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+  g.globalCompositeOperation = 'lighter';
+  // 上から降る光の筋
+  for (const r of scene.rays) {
+    const k = Math.max(0, Math.min(1, (p - r.delay) / 0.3));
+    if (!k) continue;
+    const grad = g.createLinearGradient(r.x, 0, r.x + r.bend, r.len);
+    grad.addColorStop(0, hexA(col, 0)); grad.addColorStop(1, hexA(col, 0.5 * k * after));
+    g.strokeStyle = grad; g.lineWidth = 1.5 * dpr();
+    g.beginPath(); g.moveTo(r.x, 0); g.quadraticCurveTo(r.x, r.len * 0.6, r.x + r.bend, r.len * k); g.stroke();
+  }
+  // 足元から立ち上る光の線
+  g.shadowColor = col; g.shadowBlur = 12 * dpr();
+  for (const pl of scene.pillars) {
+    const k = Math.max(0, Math.min(1, (p - pl.delay) / 0.45));
+    if (!k) continue;
+    g.strokeStyle = hexA(col, 0.75 * after); g.lineWidth = pl.w;
+    const [ex, ey] = strokePartial(g, pl.pts, 1 - Math.pow(1 - k, 2));
+    g.fillStyle = hexA('#ffffff', 0.9 * after);
+    g.beginPath(); g.arc(ex, ey, pl.w * 1.4, 0, Math.PI * 2); g.fill();
+  }
+  g.shadowBlur = 0;
+  // 足元の光だまり
+  const pool = g.createRadialGradient(cx, base, 0, cx, base, 90 * u);
+  pool.addColorStop(0, hexA(col, 0.6 * ease * after)); pool.addColorStop(1, hexA(col, 0));
+  g.fillStyle = pool; g.beginPath(); g.ellipse(cx, base, 90 * u, 14 * u, 0, 0, Math.PI * 2); g.fill();
+
+  // 人物（暗闇から浮かび上がる）
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = Math.min(1, ease * 1.3) * (struck < 0 ? 1 : Math.max(0.25, after));
+  drawFigure(g, cx, base, u, col, ease, now);
+  g.globalAlpha = 1;
+
+  // 頭上の光の輪（後半に現れ、ゆっくり脈打つ）
+  const halo = Math.max(0, Math.min(1, (p - 0.5) / 0.35)) * after;
+  if (halo > 0) {
+    g.globalCompositeOperation = 'lighter';
+    const pulse = 1 + Math.sin(now / 300) * 0.03;
+    g.shadowColor = col; g.shadowBlur = 24 * dpr();
+    g.strokeStyle = hexA(col, 0.9 * halo); g.lineWidth = 3 * dpr();
+    g.beginPath(); g.ellipse(cx, base - 122 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = hexA('#ffffff', 0.7 * halo); g.lineWidth = 1.2 * dpr();
+    g.beginPath(); g.ellipse(cx, base - 122 * u, 34 * u * pulse, 4 * u * pulse, 0, 0, Math.PI * 2); g.stroke();
+    g.shadowBlur = 0;
+  }
+  // 足元の霧
+  g.globalCompositeOperation = 'lighter';
+  for (const m of scene.mist) {
+    m.x += m.v;
+    const mg = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
+    mg.addColorStop(0, hexA('#e8e0ff', 0.16 * ease * Math.max(after, 0.4))); mg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = mg; g.beginPath(); g.arc(m.x, m.y, m.r, 0, Math.PI * 2); g.fill();
+  }
+  // 放つ瞬間：白く弾ける
+  if (struck >= 0 && struck < 0.6) {
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = `rgba(255,255,255,${0.7 * (1 - struck / 0.6)})`;
+    g.fillRect(0, 0, W, H);
+  }
+  g.globalCompositeOperation = 'source-over';
+  requestAnimationFrame(drawScene);
+}
+
 // 中心へ吸い込まれる粒子（溜め）
 function gather(col, n = 60) {
   const { W, H, cx, cy } = center();
@@ -606,6 +784,7 @@ async function fire() {
   $('vignette').className = '';
   $('stage').style.setProperty('--accent', out === 'perfect' ? '#e9c46a' : th.col);
   $('who').textContent = t ? `${t.kanji}（${t.ruby}）` : '';
+  startScene(out === 'perfect' ? '#e9c46a' : th.col);
 
   // 一. 静寂と決め台詞
   Sound.play('drone');
@@ -643,6 +822,7 @@ async function fire() {
   void $('flash').offsetWidth;
   $('flash').className = 'on';
   $('stage').classList.add('shake');
+  scene.strikeAt = performance.now();
   Sound.play('strike');
   Sound.play('el_' + th.key);
   ring(out === 'perfect' ? '#e9c46a' : '#ffffff');
@@ -671,7 +851,7 @@ async function fire() {
       ? '<div class="big perfect">極</div><div class="sub">寸分の狂いもない、真の一撃。</div><button id="close" type="button">戻る</button>'
       : '<div class="big">撃破</div><button id="close" type="button">戻る</button>';
   }
-  $('close').onclick = () => { fx.run = false; $('stage').hidden = true; busy = false; render(); };
+  $('close').onclick = () => { fx.run = false; stopScene(); $('stage').hidden = true; busy = false; render(); };
   $('close').focus();
 }
 
