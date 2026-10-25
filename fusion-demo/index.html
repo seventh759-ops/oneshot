@@ -91,12 +91,13 @@ h1 { margin: 0; font-family: var(--mincho); font-weight: 800; font-size: 26px; l
 #stage.shake { animation: shake .5s; }
 @keyframes shake { 20% { transform: translate(-8px, 4px); } 40% { transform: translate(7px, -5px); } 60% { transform: translate(-5px, -3px); } 80% { transform: translate(4px, 3px); } }
 .layer { position: relative; z-index: 1; text-align: center; display: grid; gap: 14px; justify-items: center; width: 100%; max-width: 720px; align-self: end; margin-bottom: max(6vh, 32px); }
+.layer::before { content: ""; position: absolute; z-index: -1; inset: -48px -50vw -40px; background: linear-gradient(to bottom, transparent, rgba(4,3,10,.82) 30%, rgba(4,3,10,.9) 70%, transparent); pointer-events: none; }
 #line { text-shadow: 0 0 12px #000, 0 0 4px #000; }
 #line { font-family: var(--mincho); font-size: clamp(16px, 4vw, 22px); letter-spacing: .1em; min-height: 1.6em; color: var(--text); opacity: .9; }
 #who { font-size: 11px; letter-spacing: .4em; color: var(--muted); }
 #name { display: grid; gap: 6px; }
-#name .ruby { font-size: clamp(11px, 2.6vw, 15px); letter-spacing: .35em; color: var(--accent, var(--violet)); opacity: 0; overflow-wrap: anywhere; }
-#name .kanji { font-family: var(--mincho); font-weight: 800; font-size: clamp(36px, 11vw, 92px); letter-spacing: .1em; line-height: 1.1; opacity: 0; overflow-wrap: anywhere; text-shadow: 0 0 28px var(--accent, var(--violet)); }
+#name .ruby { font-size: clamp(11px, 2.6vw, 15px); letter-spacing: .35em; color: var(--accent, var(--violet)); text-shadow: 0 0 6px #000, 0 0 2px #000; opacity: 0; overflow-wrap: anywhere; }
+#name .kanji { font-family: var(--mincho); font-weight: 800; font-size: clamp(36px, 11vw, 92px); letter-spacing: .1em; line-height: 1.1; opacity: 0; overflow-wrap: anywhere; color: #fff; -webkit-text-stroke: 1px rgba(0,0,0,.6); paint-order: stroke fill; text-shadow: 0 2px 6px #000, 0 0 2px #000, 0 0 28px var(--accent, var(--violet)); }
 #name.glitch .kanji { animation: glitch .9s steps(2) 3; }
 @keyframes glitch { 0%, 100% { transform: none; text-shadow: 0 0 28px var(--accent); } 33% { transform: translateX(-6px); text-shadow: 8px 0 #7fe8ff, -8px 0 #d79bff; } 66% { transform: translateX(5px); text-shadow: -6px 0 #7fe8ff, 6px 0 #d79bff; } }
 #name.show .ruby { animation: ruby-in .5s ease-out forwards; }
