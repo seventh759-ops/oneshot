@@ -512,12 +512,21 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
       g.moveTo(...P(pts[0])); pts.slice(1).forEach((q) => g.lineTo(...P(q)));
     }
   };
-  // フード・肩・胴・コート（肩に厚みを持たせ、裾は膝下まで）
+  // 頭：横顔（額・鼻・顎）と首。髪は後ろへ流れて揺れる
+  const head = () => smoothR([
+    [0, -111], [6, -109], [9, -104], [11.5, -99.5], [9.5, -98], [9.8, -95.5], [8, -92.5], [4.5, -91.5],
+    [4, -86], [-3, -86], [-4, -93], [-7, -98], [-6, -106],
+  ]);
+  const hair = () => smoothR([
+    [8, -107], [5, -112], [-1, -114], [-9, -111.5], [-17 - sway * 0.5, -107], [-10, -104.5],
+    [-16 - sway * 0.7, -100], [-8.5, -98.5], [-9, -93], [-5, -96], [-2, -103], [4, -105],
+  ]);
+  // 肩・胴・コート（肩に厚みを持たせ、裾は膝下まで）
   const body = () => smoothR([
-    [2, -112], [8, -110], [11, -104], [11, -98], [8.5, -97], [8.5, -92], [7, -89],
+    [5, -89],
     [12, -86], [14, -78], [13, -68], [10, -58], [13, -46], [17, -28], [12, -26], [4, -28],
     [-6, -26], [-16, -24], [-17, -36], [-13, -56],
-    [-15, -72], [-15, -84], [-12, -92], [-11, -102], [-6, -110],
+    [-15, -72], [-15, -84], [-9, -89],
   ]);
   // 剣と腕：両手で柄を握る。溜めのあいだに頭上へ振り上げ、放つ瞬間に前へ振り下ろす
   const dir = [Math.cos(pose.ang), Math.sin(pose.ang)];
@@ -546,6 +555,8 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   tail(); g.fill();
   legs(); g.lineWidth = 6 * u; g.stroke();
   body(); g.fill();
+  head(); g.fill();
+  hair(); g.fill();
   arms(); g.lineWidth = 6 * u; g.stroke();
   const perp = [-dir[1], dir[0]], gc = along(4);
   g.lineWidth = 2.2 * u; // 鍔
@@ -566,10 +577,10 @@ function drawFigure(g, cx, base, u, col, glow, now, struck) {
   const r = 2 * dpr();
   for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) g.drawImage(tint, dx, dy);
   g.drawImage(mask, 0, 0);
-  // フードの奥で光る目（横顔なので一つ）
+  // 光る目（横顔なので一つ）
   g.fillStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 12 * dpr() * glow;
   g.globalAlpha *= glow;
-  const eye = PR([5.5, -101]);
+  const eye = PR([5, -102]);
   g.fillRect(eye[0], eye[1], 2.6 * u, 1.1 * u);
   g.restore();
 
