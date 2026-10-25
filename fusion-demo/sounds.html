@@ -243,12 +243,33 @@ const ELEMENTS = [
   },
   {
     key: 'earth', name: '土', col: '#c29a6b', members: '岩砕・重星',
-    desc: '地の底から地鳴りがせり上がり、ドンと岩が砕け、ガラガラと破片が転がる。',
+    desc: '地面が割れてゴリゴリと岩が擦れ、地鳴りとともにせり上がり、ドンと砕けて破片が降る。',
     play(t) {
-      noise(t, 0.4, 0.6, 1.2, 'lowpass', 120, 60, 0.7, 0.2);
-      boom(t + 0.35, 60, 28, 1.8, 0.7);
-      noise(t + 0.35, 0.002, 0.8, 0.3, 'bandpass', 900, 300, 1, 0.3);
-      for (let i = 0; i < 20; i++) noise(t + 0.45 + Math.random() * 1.0, 0.002, 0.25, 0.05 + Math.random() * 0.08, 'bandpass', 400 + Math.random() * 900, 200, 2, 0.3, Math.random() * 1.2 - 0.6);
+      const up = 0.9; // せり上がりきるまで
+      // 岩が擦れる音：だんだん密になる
+      for (let i = 0; i < 40; i++) {
+        const tt = t + Math.pow(Math.random(), 0.5) * up;
+        noise(tt, 0.002, 0.12 + (tt - t) / up * 0.25, 0.04 + Math.random() * 0.06, 'bandpass', 250 + Math.random() * 500, 150, 3, 0.2, Math.random() * 1.2 - 0.6);
+      }
+      // 地鳴り：低いノイズが明るく、大きくなっていく
+      const s0 = noiseSrc(), f0 = ctx.createBiquadFilter(), g0 = ctx.createGain();
+      f0.type = 'lowpass'; f0.Q.value = 1; f0.frequency.setValueAtTime(70, t); f0.frequency.exponentialRampToValueAtTime(380, t + up);
+      g0.gain.setValueAtTime(0.0001, t); g0.gain.exponentialRampToValueAtTime(2.2, t + up); g0.gain.exponentialRampToValueAtTime(0.0001, t + up + 0.15);
+      s0.connect(f0); f0.connect(g0); out(g0, 0.2); s0.start(t); s0.stop(t + up + 0.2);
+      // 唸り：音程ごとじわじわ上がる低音
+      const o = ctx.createOscillator(), sh = ctx.createWaveShaper(), og = ctx.createGain(), lp = ctx.createBiquadFilter();
+      const c = new Float32Array(256); for (let i = 0; i < 256; i++) c[i] = Math.tanh((i / 128 - 1) * 4); sh.curve = c;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(28, t); o.frequency.exponentialRampToValueAtTime(46, t + up);
+      lp.type = 'lowpass'; lp.frequency.value = 160;
+      og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.4, t + up); og.gain.exponentialRampToValueAtTime(0.0001, t + up + 0.1);
+      o.connect(sh); sh.connect(lp); lp.connect(og); out(og, 0.2); o.start(t); o.stop(t + up + 0.15);
+      // 噴き出し：音程のない、砕ける衝撃
+      const hit = t + up;
+      noise(hit, 0.002, 1.8, 0.35, 'bandpass', 700, 250, 0.8, 0.3);
+      noise(hit, 0.003, 1.8, 0.9, 'lowpass', 400, 50, 0.7, 0.4);
+      // 破片が降る
+      for (let i = 0; i < 24; i++) noise(hit + 0.1 + Math.random() * 1.2, 0.002, 0.22, 0.05 + Math.random() * 0.08, 'bandpass', 500 + Math.random() * 1000, 250, 2, 0.3, Math.random() * 1.4 - 0.7);
+      noise(hit + 0.1, 0.3, 0.3, 1.8, 'lowpass', 160, 50, 0.7, 0.7);
     },
   },
   {
