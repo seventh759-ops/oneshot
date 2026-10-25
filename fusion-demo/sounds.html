@@ -220,14 +220,14 @@ const ELEMENTS = [
   },
   {
     key: 'wind', name: '風', col: '#b8ffd8', members: '疾風',
-    desc: '左から右へ突風が吹き抜け、細い風鳴りの口笛が尾を引く。',
+    desc: '左から右へ突風が吹き抜け、かすかな風切りのヒューが混じる。',
     play(t) {
       const s = noiseSrc(), f = ctx.createBiquadFilter(), g = env(t, 0.25, 2.2, 1.2), p = ctx.createStereoPanner();
       f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.5); f.frequency.exponentialRampToValueAtTime(600, t + 1.45);
       p.pan.setValueAtTime(-0.9, t); p.pan.linearRampToValueAtTime(0.9, t + 1.4);
       s.connect(f); f.connect(g); g.connect(p); out(p, 0.4); s.start(t); s.stop(t + 1.5);
-      const o = tone('sine', 1800, t + 0.3, 0.2, 0.06, 1.2, 1300, 0.6);
-      const v = ctx.createOscillator(), vg = ctx.createGain(); v.frequency.value = 6; vg.gain.value = 30; v.connect(vg); vg.connect(o.frequency); v.start(t); v.stop(t + 1.8);
+      // 風切り：細く絞ったノイズの「ヒュー」を、突風に少しだけ混ぜる
+      noise(t + 0.25, 0.35, 0.5, 1.0, 'bandpass', 1500, 1000, 14, 0.5, 0.4);
     },
   },
   {
