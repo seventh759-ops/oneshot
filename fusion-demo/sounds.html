@@ -328,13 +328,24 @@ const ELEMENTS = [
   },
   {
     key: 'star', name: '星', col: '#bcd7ff', members: '流星',
-    desc: 'ヒュウゥと笛のように落ちてきて、ズンと遠くに着弾し、きらめきが降る。',
+    desc: 'ゴォォと空を裂いて迫り、ズドンと大地に落ちる。重い地鳴りの上に、かすかなきらめきが降る。',
     play(t) {
-      tone('sine', 2800, t, 0.02, 0.08, 1.0, 300, 0.4);
-      noise(t, 0.3, 0.12, 0.8, 'bandpass', 4000, 600, 3, 0.4);
-      boom(t + 1.0, 70, 30, 1.6, 0.6);
-      noise(t + 1.0, 0.002, 0.4, 0.5, 'lowpass', 2000, 200, 0.7, 0.4);
-      for (let i = 0; i < 10; i++) tone('sine', 2500 + Math.random() * 3000, t + 1.1 + Math.random() * 1.0, 0.002, 0.03, 0.4, 0, 0.8, Math.random() * 2 - 1);
+      // 接近：低いうなりが近づくほど大きく、明るくなる
+      const s0 = noiseSrc(), f0 = ctx.createBiquadFilter(), g0 = ctx.createGain();
+      f0.type = 'lowpass'; f0.Q.value = 0.8; f0.frequency.setValueAtTime(150, t); f0.frequency.exponentialRampToValueAtTime(1800, t + 0.95);
+      g0.gain.setValueAtTime(0.0001, t); g0.gain.exponentialRampToValueAtTime(0.75, t + 0.95); g0.gain.exponentialRampToValueAtTime(0.0001, t + 1.05);
+      s0.connect(f0); f0.connect(g0); out(g0, 0.3); s0.start(t); s0.stop(t + 1.1);
+      tone('sawtooth', 220, t, 0.6, 0.05, 0.4, 55, 0.3);                       // 下で支える重い落下音
+      tone('sine', 1800, t, 0.05, 0.03, 0.9, 260, 0.4);                        // 控えめな笛
+      // 着弾
+      const hit = t + 1.0;
+      noise(hit, 0.001, 0.9, 0.02, 'highpass', 3000, 6000);
+      boom(hit, 48, 20, 3.0, 0.52);
+      brass(hit, [36.7, 55, 73.4], 0.015, 1.8, 0.13, 900, 0.6);
+      noise(hit, 0.003, 0.7, 0.5, 'lowpass', 1500, 120, 0.7, 0.4);
+      for (let i = 0; i < 18; i++) noise(hit + 0.05 + Math.random() * 0.9, 0.002, 0.2, 0.05 + Math.random() * 0.08, 'bandpass', 400 + Math.random() * 900, 200, 2, 0.3, Math.random() * 1.2 - 0.6);
+      noise(hit + 0.1, 0.4, 0.35, 2.4, 'lowpass', 140, 50, 0.7, 0.8);
+      for (let i = 0; i < 6; i++) tone('sine', 2500 + Math.random() * 2500, hit + 0.6 + Math.random() * 1.0, 0.002, 0.015, 0.5, 0, 0.9, Math.random() * 2 - 1);
     },
   },
   {
